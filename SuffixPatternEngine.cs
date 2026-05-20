@@ -125,7 +125,7 @@ namespace BlockCatalogPlugin
         /// </summary>
         public bool BulkRenameAttributes(
             List<AttributeBlockData> sortedBlocks,
-            SequenceConfig config)
+            AttributeModifier.SequenceConfig config)
         {
             if (sortedBlocks == null || sortedBlocks.Count == 0 || config == null)
                 return false;

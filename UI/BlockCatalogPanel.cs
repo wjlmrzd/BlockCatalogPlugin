@@ -113,6 +113,36 @@ namespace BlockCatalogPlugin.UI
             _tabStringFormat ??= new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
         }
 
+        /// <summary>
+        /// 释放静态 GDI 资源（在插件卸载时调用）
+        /// </summary>
+        public static void ReleaseCachedResources()
+        {
+            try { _headerTitleFont?.Dispose(); } catch { }
+            try { _headerVerFont?.Dispose(); } catch { }
+            try { _headerTitleBrush?.Dispose(); } catch { }
+            try { _headerVerBrush?.Dispose(); } catch { }
+            try { _tabFontNormal?.Dispose(); } catch { }
+            try { _tabFontBold?.Dispose(); } catch { }
+            try { _tabSelectedBrush?.Dispose(); } catch { }
+            try { _tabNormalBrush?.Dispose(); } catch { }
+            try { _tabTextSelectedBrush?.Dispose(); } catch { }
+            try { _tabTextNormalBrush?.Dispose(); } catch { }
+            try { _tabStringFormat?.Dispose(); } catch { }
+
+            _headerTitleFont = null;
+            _headerVerFont = null;
+            _headerTitleBrush = null;
+            _headerVerBrush = null;
+            _tabFontNormal = null;
+            _tabFontBold = null;
+            _tabSelectedBrush = null;
+            _tabNormalBrush = null;
+            _tabTextSelectedBrush = null;
+            _tabTextNormalBrush = null;
+            _tabStringFormat = null;
+        }
+
         private CatalogStyle LoadStyleFromPreferences()
         {
             return new CatalogStyle

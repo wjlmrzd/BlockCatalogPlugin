@@ -21,3 +21,4 @@ D:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\bin\Debug\net48\System.Va
 D:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\obj\Debug\net48\BlockCat.5325B956.Up2Date
 D:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\obj\Debug\net48\BlockCatalogPlugin.dll
 D:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\obj\Debug\net48\BlockCatalogPlugin.pdb
+D:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\obj\Debug\net48\BlockCatalogPlugin.sourcelink.json

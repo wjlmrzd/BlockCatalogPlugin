@@ -43,6 +43,8 @@ namespace BlockCatalogPlugin
             // 保存用户偏好
             PreferencesManager.Instance.Save();
             try { _ps?.Dispose(); } catch { }
+            // 释放静态 GDI 资源
+            try { BlockCatalogPanel.ReleaseCachedResources(); } catch { }
         }
 
         internal static void EnsurePanelVisible()
