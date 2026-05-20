@@ -95,6 +95,7 @@ namespace BlockCatalogPlugin.UI
         private bool _isResizingColumn = false;
         private bool _isResizingRow = false;
         private bool _isPickingColumnWidth = false; // 是否处于拖拽获取列宽模式
+        private int _selectedColumnIndexForPick = -1; // 用于拖拽获取列宽时指定哪一列
 
         public BlockCatalogPanel()
         {
@@ -1285,9 +1286,39 @@ namespace BlockCatalogPlugin.UI
         /// </summary>
         private void StartPickColumnWidthMode()
         {
+            if (lstColumns == null || lstColumns.SelectedIndex < 0)
+            {
+                AppendLog("请先在列表中选择要设置宽度的列", Theme.Warning);
+                return;
+            }
             _isPickingColumnWidth = true;
+            _selectedColumnIndexForPick = lstColumns.SelectedIndex;
             AppendLog("请在CAD中框选两个点来获取列宽...", Theme.Primary);
             ExecuteCommand("_BCPICKCOLWIDTH");
+        }
+
+        /// <summary>
+        /// 应用获取到的列宽到选中的列
+        /// </summary>
+        internal void ApplyPickedColumnWidth(double width)
+        {
+            _isPickingColumnWidth = false;
+            if (width <= 0)
+            {
+                AppendLog("列宽无效", Theme.Warning);
+                return;
+            }
+
+            var visibleCols = _currentStyle.Columns.Where(c => c.Visible).OrderBy(c => c.Order).ToList();
+            int targetIdx = _selectedColumnIndexForPick >= 0 ? _selectedColumnIndexForPick : 0;
+            if (targetIdx < visibleCols.Count)
+            {
+                visibleCols[targetIdx].Width = width;
+                RefreshColumnsList();
+                UpdateColumnFormula();
+                AppendLog($"已设置列宽: {width:F1}", Theme.Success);
+            }
+            _selectedColumnIndexForPick = -1;
         }
 
         #endregion

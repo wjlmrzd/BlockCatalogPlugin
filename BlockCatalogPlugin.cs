@@ -104,6 +104,10 @@ namespace BlockCatalogPlugin
         {
             // 保存用户偏好
             PreferencesManager.Instance.Save();
+
+            // 注销事件处理器
+            Application.DocumentManager.DocumentActivated -= OnDocumentActivated;
+
             try { _ps?.Dispose(); } catch { }
             // 释放静态 GDI 资源
             try { BlockCatalogPanel.ReleaseCachedResources(); } catch { }

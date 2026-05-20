@@ -37,6 +37,16 @@ namespace BlockCatalogPlugin
         private static readonly string[] ChineseOneDigits = { "零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十" };
 
         /// <summary>
+        /// 生成目录结果（含警告信息）
+        /// </summary>
+        public class GenerateResult
+        {
+            public ObjectId TableId { get; set; }
+            public List<string> Warnings { get; set; } = new List<string>();
+            public bool HasWarnings => Warnings.Count > 0;
+        }
+
+        /// <summary>
         /// 生成目录（使用 DBText 多行文字）
         /// </summary>
         /// <param name="blocks">属性块数据列表</param>
@@ -44,17 +54,16 @@ namespace BlockCatalogPlugin
         /// <param name="mergeConfig">合并配置</param>
         /// <param name="insertPoint">插入位置（null则使用原点）</param>
         /// <param name="targetLayoutName">目标布局名称（null则使用模型空间）</param>
-        public ObjectId GenerateTable(List<AttributeBlockData> blocks, CatalogStyle style, MergeConfig mergeConfig = null,
+        public GenerateResult GenerateTableWithResult(List<AttributeBlockData> blocks, CatalogStyle style, MergeConfig mergeConfig = null,
             Point3d? insertPoint = null, string targetLayoutName = null)
         {
+            var result = new GenerateResult();
             if (blocks == null || blocks.Count == 0)
                 throw new ArgumentException("没有可生成目录的属性块");
 
             var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc == null)
                 throw new InvalidOperationException("无法获取CAD文档");
-
-            ObjectId resultId = ObjectId.Null;
 
             // 从 UI 躐程调用时必须锁定文档，否则会抛出 eLockViolation
             using (var docLock = doc.LockDocument())
@@ -109,16 +118,18 @@ namespace BlockCatalogPlugin
                         double y = startY;
                         double x = startX;
 
-                        // 插入表头（在最上方）
-                        InsertText(tr, targetBtr, "序号", new Point3d(x, y, 0), style.FontHeight, true);
+                        // 插入表头（在最上方）- 居中显示
+                        string warn = InsertText(tr, targetBtr, "序号", new Point3d(x, y, 0), style.FontHeight, true, colWidths[0], true);
+                        if (!string.IsNullOrEmpty(warn)) result.Warnings.Add(warn);
                         for (int c = 1; c < colCount; c++)
                         {
                             x += colWidths[c - 1];
-                            InsertText(tr, targetBtr, visibleCols[c - 1]?.Header ?? "", new Point3d(x, y, 0), style.FontHeight, true);
+                            warn = InsertText(tr, targetBtr, visibleCols[c - 1]?.Header ?? "", new Point3d(x, y, 0), style.FontHeight, true, colWidths[c], true);
+                            if (!string.IsNullOrEmpty(warn)) result.Warnings.Add(warn);
                         }
                         y -= style.HeaderHeight;  // 内容行向下移动
 
-                        // 插入数据行
+                        // 插入数据行 - 居中显示，自动适应
                         for (int r = 0; r < displayBlocks.Count; r++)
                         {
                             var block = displayBlocks[r];
@@ -126,13 +137,15 @@ namespace BlockCatalogPlugin
                             string seqStr = FormatSeqNum(seqNum, style.SeqFormat);
 
                             x = startX;
-                            InsertText(tr, targetBtr, seqStr, new Point3d(x, y, 0), style.FontHeight, false);
+                            warn = InsertText(tr, targetBtr, seqStr, new Point3d(x, y, 0), style.FontHeight, false, colWidths[0], true);
+                            if (!string.IsNullOrEmpty(warn)) result.Warnings.Add($"行{r + 1}序号: {warn}");
                             for (int c = 1; c < colCount; c++)
                             {
                                 x += colWidths[c - 1];
                                 var tag = visibleCols[c - 1]?.Tag;
                                 string value = tag != null ? GetAttrBlockAttributeMulti(block, tag) : "";
-                                InsertText(tr, targetBtr, value, new Point3d(x, y, 0), style.FontHeight, false);
+                                warn = InsertText(tr, targetBtr, value, new Point3d(x, y, 0), style.FontHeight, false, colWidths[c], true);
+                                if (!string.IsNullOrEmpty(warn)) result.Warnings.Add($"行{r + 1}列{c}: {warn}");
                             }
                             y -= style.RowHeight;  // 每行向下移动
                         }
@@ -147,23 +160,75 @@ namespace BlockCatalogPlugin
                 }
             }
 
-            return resultId;
+            return result;
         }
 
-        private void InsertText(Transaction tr, BlockTableRecord ms, string text, Point3d pos, double height, bool bold)
+        /// <summary>
+        /// 生成目录（兼容旧接口）
+        /// </summary>
+        public ObjectId GenerateTable(List<AttributeBlockData> blocks, CatalogStyle style, MergeConfig mergeConfig = null,
+            Point3d? insertPoint = null, string targetLayoutName = null)
         {
+            var result = GenerateTableWithResult(blocks, style, mergeConfig, insertPoint, targetLayoutName);
+            return result.TableId;
+        }
+
+        /// <summary>
+        /// 插入文字（支持居中和自动缩小字体）
+        /// </summary>
+        /// <param name="tr">事务</param>
+        /// <param name="ms">块表记录</param>
+        /// <param name="text">文字内容</param>
+        /// <param name="pos">位置</param>
+        /// <param name="height">原始字高</param>
+        /// <param name="bold">是否加粗</param>
+        /// <param name="colWidth">列宽（用于计算居中和自动缩小）</param>
+        /// <param name="autoFit">是否自动适应列宽</param>
+        /// <returns>警告信息（如果有）</returns>
+        private string InsertText(Transaction tr, BlockTableRecord ms, string text, Point3d pos, double height, bool bold, double colWidth = 0, bool autoFit = true)
+        {
+            if (string.IsNullOrEmpty(text)) text = "";
+
+            // 计算文字宽度（粗略估算：每个字符约 0.7 倍字高）
+            double textWidth = text.Length * height * 0.7;
+            string warning = null;
+
+            // 如果启用了自动适应且列宽足够大，则检测是否需要缩小字体
+            double actualHeight = height;
+            if (autoFit && colWidth > 0 && textWidth > colWidth * 0.9)
+            {
+                // 缩小字体以适应列宽（留 10% 边距）
+                actualHeight = height * (colWidth * 0.9) / textWidth;
+                actualHeight = Math.Max(actualHeight, 1.0); // 最小字高 1.0
+
+                if (actualHeight < height * 0.5)
+                {
+                    // 如果缩小超过 50%，发出警告
+                    warning = $"文字可能过小: {text.Substring(0, Math.Min(10, text.Length))}...";
+                }
+            }
+
+            // 计算居中位置
+            double offsetX = 0;
+            if (colWidth > 0)
+            {
+                offsetX = colWidth / 2.0;
+            }
+
             var dbText = new DBText
             {
                 TextString = text,
-                Position = pos,
-                Height = height,
-                HorizontalMode = TextHorizontalMode.TextLeft,
+                Position = new Point3d(pos.X + offsetX, pos.Y, pos.Z),
+                Height = actualHeight,
+                HorizontalMode = colWidth > 0 ? TextHorizontalMode.TextCenter : TextHorizontalMode.TextLeft,
                 VerticalMode = TextVerticalMode.TextBottom,
-                AlignmentPoint = pos
+                AlignmentPoint = new Point3d(pos.X + offsetX, pos.Y, pos.Z)
             };
 
             ms.AppendEntity(dbText);
             tr.AddNewlyCreatedDBObject(dbText, true);
+
+            return warning;
         }
 
         private string FormatSeqNum(int num, SeqFormatConfig format)
@@ -409,18 +474,18 @@ namespace BlockCatalogPlugin
             double textHeight = style.RowHeight * 0.8;
             y = startY - textHeight * 0.5;
 
-            // 序号列标题
-            entities.Add(CreateText("序号", new Point3d(startX + 2, y, 0), textHeight, true));
+            // 序号列标题 - 居中显示，自动适应列宽
+            entities.Add(CreateDBText("序号", new Point3d(startX + colWidths[0] / 2, y, 0), textHeight, true, colWidths[0]));
 
             x = startX;
             for (int c = 1; c < colCount; c++)
             {
                 x += colWidths[c - 1];
                 string header = visibleCols[c - 1]?.Header ?? visibleCols[c - 1]?.Tag ?? "";
-                entities.Add(CreateText(header, new Point3d(x + 2, y, 0), textHeight, true));
+                entities.Add(CreateDBText(header, new Point3d(x + colWidths[c] / 2, y, 0), textHeight, true, colWidths[c]));
             }
 
-            // 绘制数据行
+            // 绘制数据行 - 居中显示，自动适应
             double rowTextY = startY - headerHeight - textHeight * 0.5;
             int seqNum = 1;
 
@@ -430,7 +495,7 @@ namespace BlockCatalogPlugin
 
                 // 序号
                 string seqStr = FormatSeqNum(seqNum++, style.SeqFormat);
-                entities.Add(CreateText(seqStr, new Point3d(x + 2, rowTextY, 0), textHeight, false));
+                entities.Add(CreateDBText(seqStr, new Point3d(x + colWidths[0] / 2, rowTextY, 0), textHeight, false, colWidths[0]));
 
                 // 属性列
                 for (int c = 1; c < colCount; c++)
@@ -438,13 +503,50 @@ namespace BlockCatalogPlugin
                     x += colWidths[c - 1];
                     var tag = visibleCols[c - 1]?.Tag;
                     string value = tag != null ? GetAttrBlockAttributeMulti(block, tag) : "";
-                    entities.Add(CreateText(value, new Point3d(x + 2, rowTextY, 0), textHeight, false));
+                    entities.Add(CreateDBText(value, new Point3d(x + colWidths[c] / 2, rowTextY, 0), textHeight, false, colWidths[c]));
                 }
 
                 rowTextY -= style.RowHeight;
             }
 
             return entities;
+        }
+
+        /// <summary>
+        /// 创建居中的单行文字（自动适应列宽）
+        /// </summary>
+        private DBText CreateDBText(string text, Point3d position, double height, bool bold, double colWidth = 0)
+        {
+            if (string.IsNullOrEmpty(text)) text = "";
+
+            double actualHeight = height;
+
+            // 如果有列宽限制，自动调整字体大小
+            if (colWidth > 0)
+            {
+                double textWidth = text.Length * height * 0.7;
+                if (textWidth > colWidth * 0.9)
+                {
+                    // 缩小字体以适应列宽
+                    actualHeight = height * (colWidth * 0.9) / textWidth;
+                    actualHeight = Math.Max(actualHeight, 1.0); // 最小字高 1.0
+                }
+            }
+
+            var dbText = new DBText
+            {
+                TextString = text,
+                Position = position,
+                Height = actualHeight,
+                HorizontalMode = TextHorizontalMode.TextCenter,
+                VerticalMode = TextVerticalMode.TextBottom,
+                AlignmentPoint = position
+            };
+            if (bold)
+            {
+                dbText.WidthFactor = 1.2;
+            }
+            return dbText;
         }
 
         /// <summary>
@@ -470,24 +572,54 @@ namespace BlockCatalogPlugin
         }
 
         /// <summary>
-        /// 创建单行文字
+        /// 创建单行文字（支持居中和自动适应列宽）
         /// </summary>
-        private DBText CreateText(string text, Point3d position, double height, bool bold)
+        /// <param name="text">文字内容</param>
+        /// <param name="position">位置（列的起始位置）</param>
+        /// <param name="height">字高</param>
+        /// <param name="bold">是否加粗</param>
+        /// <param name="colWidth">列宽（用于居中和自动适应）</param>
+        /// <param name="autoFit">是否自动适应列宽</param>
+        /// <returns>警告信息（如果有）</returns>
+        private string CreateText(string text, Point3d position, double height, bool bold, double colWidth = 0, bool autoFit = true)
         {
+            if (string.IsNullOrEmpty(text)) text = "";
+
+            // 计算文字宽度（粗略估算：每个字符约 0.7 倍字高）
+            double textWidth = text.Length * height * 0.7;
+            string warning = null;
+            double actualHeight = height;
+
+            // 如果启用了自动适应且列宽足够大，则检测是否需要缩小字体
+            if (autoFit && colWidth > 0 && textWidth > colWidth * 0.9)
+            {
+                // 缩小字体以适应列宽（留 10% 边距）
+                actualHeight = height * (colWidth * 0.9) / textWidth;
+                actualHeight = Math.Max(actualHeight, 1.0); // 最小字高 1.0
+
+                if (actualHeight < height * 0.5)
+                {
+                    warning = $"文字过小: {text.Substring(0, Math.Min(8, text.Length))}...";
+                }
+            }
+
+            // 计算居中位置
+            double offsetX = colWidth > 0 ? colWidth / 2.0 : 2;
+
             var dbText = new DBText
             {
-                TextString = text ?? "",
-                Position = position,
-                Height = height,
-                HorizontalMode = TextHorizontalMode.TextLeft,
+                TextString = text,
+                Position = new Point3d(position.X + offsetX, position.Y, position.Z),
+                Height = actualHeight,
+                HorizontalMode = colWidth > 0 ? TextHorizontalMode.TextCenter : TextHorizontalMode.TextLeft,
                 VerticalMode = TextVerticalMode.TextBottom,
-                AlignmentPoint = position
+                AlignmentPoint = new Point3d(position.X + offsetX, position.Y, position.Z)
             };
             if (bold)
             {
                 dbText.WidthFactor = 1.2;
             }
-            return dbText;
+            return warning;
         }
 
         /// <summary>
