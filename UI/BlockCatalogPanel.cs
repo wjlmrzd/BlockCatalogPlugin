@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
 using Autodesk.AutoCAD.ApplicationServices;
@@ -10,12 +9,10 @@ using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using BlockCatalogPlugin;
 using Font = System.Drawing.Font;
-using FlowLayoutPanel = System.Windows.Forms.FlowLayoutPanel;
-using FlowDirection = System.Windows.Forms.FlowDirection;
+using Application = Autodesk.AutoCAD.ApplicationServices.Application;
 
 namespace BlockCatalogPlugin.UI
 {
-    // Theme alias for ThemeConfig
     internal static class Theme
     {
         internal static Color Bg => ThemeConfig.BgAlt;
@@ -52,9 +49,8 @@ namespace BlockCatalogPlugin.UI
         private UserPreferences _preferences;
 
         private RichTextBox rtbLog;
+        private Panel _canvasPanel;
 
-        // 看板式UI控件
-        private TableLayoutPanel _rootLayout;
         private DataGridView dgvBlocks;
         private RadioButton radCatalogMode;
         private RadioButton radEditMode;
@@ -81,20 +77,11 @@ namespace BlockCatalogPlugin.UI
         private Button btnImport;
         private Button btnExport;
 
-        // 缓存的 GDI 资源（避免在 Paint 事件中重复创建）
         private static Font _headerTitleFont;
         private static Font _headerVerFont;
         private static Brush _headerTitleBrush;
         private static Brush _headerVerBrush;
-        private static Font _tabFontNormal;
-        private static Font _tabFontBold;
-        private static Brush _tabSelectedBrush;
-        private static Brush _tabNormalBrush;
-        private static Brush _tabTextSelectedBrush;
-        private static Brush _tabTextNormalBrush;
-        private static StringFormat _tabStringFormat;
 
-        // Drag-drop state for DataGridView
         private int _dragRowIndex = -1;
         private Point _dragStartPoint;
         private bool _isDragging = false;
@@ -104,53 +91,25 @@ namespace BlockCatalogPlugin.UI
             _preferences = PreferencesManager.Instance.Load();
             _currentStyle = LoadStyleFromPreferences();
             EnsureCachedResources();
-
             InitializeComponents();
         }
 
         private static void EnsureCachedResources()
         {
-            _headerTitleFont ??= new Font("Microsoft YaHei UI", 13F, FontStyle.Bold);
+            _headerTitleFont ??= new Font("Microsoft YaHei UI", 12F, FontStyle.Bold);
             _headerVerFont ??= new Font("Microsoft YaHei UI", 8F);
             _headerTitleBrush ??= new SolidBrush(Theme.TextBright);
             _headerVerBrush ??= new SolidBrush(Theme.TextDim);
-            _tabFontNormal ??= new Font("Microsoft YaHei UI", 9F, FontStyle.Regular);
-            _tabFontBold ??= new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
-            _tabSelectedBrush ??= new SolidBrush(Theme.Card);
-            _tabNormalBrush ??= new SolidBrush(Theme.Bg);
-            _tabTextSelectedBrush ??= new SolidBrush(Theme.TextBright);
-            _tabTextNormalBrush ??= new SolidBrush(Theme.TextDim);
-            _tabStringFormat ??= new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
         }
 
-        /// <summary>
-        /// 释放静态 GDI 资源（在插件卸载时调用）
-        /// </summary>
         public static void ReleaseCachedResources()
         {
             try { _headerTitleFont?.Dispose(); } catch { }
             try { _headerVerFont?.Dispose(); } catch { }
             try { _headerTitleBrush?.Dispose(); } catch { }
             try { _headerVerBrush?.Dispose(); } catch { }
-            try { _tabFontNormal?.Dispose(); } catch { }
-            try { _tabFontBold?.Dispose(); } catch { }
-            try { _tabSelectedBrush?.Dispose(); } catch { }
-            try { _tabNormalBrush?.Dispose(); } catch { }
-            try { _tabTextSelectedBrush?.Dispose(); } catch { }
-            try { _tabTextNormalBrush?.Dispose(); } catch { }
-            try { _tabStringFormat?.Dispose(); } catch { }
-
-            _headerTitleFont = null;
-            _headerVerFont = null;
-            _headerTitleBrush = null;
-            _headerVerBrush = null;
-            _tabFontNormal = null;
-            _tabFontBold = null;
-            _tabSelectedBrush = null;
-            _tabNormalBrush = null;
-            _tabTextSelectedBrush = null;
-            _tabTextNormalBrush = null;
-            _tabStringFormat = null;
+            _headerTitleFont = null; _headerVerFont = null;
+            _headerTitleBrush = null; _headerVerBrush = null;
         }
 
         private CatalogStyle LoadStyleFromPreferences()
@@ -174,324 +133,201 @@ namespace BlockCatalogPlugin.UI
         {
             BackColor = Theme.Bg;
             ForeColor = Theme.Text;
-            AutoScroll = false;
-            Padding = new Padding(0);
-
-            // 根布局：3行（Header 56px, Content *, Log 120px）
-            _rootLayout = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                RowCount = 3,
-                ColumnCount = 1,
-                BackColor = Theme.Bg,
-                Padding = new Padding(0)
-            };
-            _rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
-            _rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            _rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 120));
+            Size = new Size(340, 800);
 
             // === Header ===
-            var pnlHeader = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Card };
-            pnlHeader.Paint += (s, e) =>
+            var headerPanel = new Panel
             {
-                var g = e.Graphics;
-                g.DrawString("图框目录工具", _headerTitleFont, _headerTitleBrush, 12, 14);
-                g.DrawString("看板式 V3.0", _headerVerFont, _headerVerBrush, 12, 34);
+                Bounds = new Rectangle(0, 0, 340, 50),
+                BackColor = Theme.Card,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
-            _rootLayout.Controls.Add(pnlHeader, 0, 0);
-
-            // === Content: 3列布局 (25% | 45% | 30%) ===
-            var contentPanel = new TableLayoutPanel
+            headerPanel.Paint += (s, e) =>
             {
-                Dock = DockStyle.Fill,
-                RowCount = 1,
-                ColumnCount = 3,
+                e.Graphics.DrawString("图框目录工具", _headerTitleFont, _headerTitleBrush, 12, 8);
+                e.Graphics.DrawString("全总控看板 V3.0 (固定版)", _headerVerFont, _headerVerBrush, 12, 28);
+            };
+            Controls.Add(headerPanel);
+
+            // === Canvas ===
+            _canvasPanel = new Panel
+            {
+                Bounds = new Rectangle(0, 50, 340, 630),
                 BackColor = Theme.Bg,
-                Padding = new Padding(4)
+                AutoScroll = true,
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             };
-            contentPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
-            contentPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
-            contentPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
-
-            // Column 0: 总控与排序区
-            contentPanel.Controls.Add(CreateControlPanel(), 0, 0);
-
-            // Column 1: 图形缓冲区 + 缀参数区
-            contentPanel.Controls.Add(CreateBufferPanel(), 1, 0);
-
-            // Column 2: 目录输出区
-            contentPanel.Controls.Add(CreateOutputPanel(), 2, 0);
-
-            _rootLayout.Controls.Add(contentPanel, 0, 1);
+            BuildFixedLayoutCanvas();
+            Controls.Add(_canvasPanel);
 
             // === Log Panel ===
-            var logPanel = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Card };
-            var logHeader = new Panel { Dock = DockStyle.Top, Height = 24, BackColor = Theme.Card };
-            logHeader.Controls.Add(new Label
+            var logPanel = new Panel
+            {
+                Bounds = new Rectangle(0, 680, 340, 120),
+                BackColor = Theme.Card,
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
+            };
+
+            var lblLogTitle = new Label
             {
                 Text = "操作日志",
-                Dock = DockStyle.Left,
+                Location = new Point(6, 4),
                 AutoSize = true,
                 Font = new Font("Microsoft YaHei UI", 8F, FontStyle.Bold),
-                ForeColor = Theme.TextDim,
-                Padding = new Padding(6, 4, 0, 0)
-            });
-            var btnClear = new Button
-            {
-                Text = "清空",
-                Dock = DockStyle.Right,
-                Width = 45,
-                BackColor = Theme.Card,
-                ForeColor = Theme.TextDim,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Microsoft YaHei UI", 7F),
-                Cursor = Cursors.Hand
+                ForeColor = Theme.TextDim
             };
-            btnClear.FlatAppearance.BorderSize = 0;
+            logPanel.Controls.Add(lblLogTitle);
+
+            var btnClear = CreateFlatButton("清空", 290, 2, 45, Theme.Card);
+            btnClear.Height = 18;
+            btnClear.Font = new Font("Microsoft YaHei UI", 7F);
             btnClear.Click += (s, e) => rtbLog?.Clear();
-            logHeader.Controls.Add(btnClear);
-            logPanel.Controls.Add(logHeader);
+            logPanel.Controls.Add(btnClear);
 
             rtbLog = new RichTextBox
             {
-                Dock = DockStyle.Fill,
+                Bounds = new Rectangle(0, 22, 340, 98),
                 BackColor = Theme.LogBg,
                 ForeColor = Theme.Text,
-                Font = new Font("Consolas", 7.5F),
+                Font = new Font("Consolas", 8F),
                 ReadOnly = true,
                 BorderStyle = BorderStyle.None,
-                WordWrap = true,
-                ScrollBars = RichTextBoxScrollBars.Vertical
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             };
             logPanel.Controls.Add(rtbLog);
-            _rootLayout.Controls.Add(logPanel, 0, 2);
+            Controls.Add(logPanel);
 
-            Controls.Add(_rootLayout);
-            AppendLog("准备就绪 - 看板式界面已加载", Theme.TextDim);
+            AppendLog("准备就绪 - 工业级固定看板布局已加载", Theme.TextDim);
         }
 
-        /// <summary>
-        /// 创建总控与排序区（左侧栏）
-        /// </summary>
-        private Panel CreateControlPanel()
+        private void BuildFixedLayoutCanvas()
         {
-            var panel = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = Theme.Bg,
-                Padding = new Padding(4),
-                ColumnCount = 1,
-                RowCount = 4
-            };
-            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            int curY = 6;
+            int boxW = 312;
+            int leftX = 10;
 
-            // 工作模式 GroupBox
+            // === Box 1: 总控模式与配置 ===
             var grpMode = new GroupBox
             {
-                Text = "工作模式",
-                Dock = DockStyle.Top,
-                Height = 70,
+                Text = "总控模式与配置",
+                Location = new Point(leftX, curY),
+                Size = new Size(boxW, 85),
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
-                FlatStyle = FlatStyle.Flat,
-                Padding = new Padding(8, 16, 8, 8)
+                FlatStyle = FlatStyle.Flat
             };
 
             radCatalogMode = new RadioButton
             {
                 Text = "生成目录",
-                Dock = DockStyle.Top,
+                Location = new Point(12, 20),
                 AutoSize = true,
-                ForeColor = Theme.Text,
-                BackColor = Theme.Card,
                 Checked = true,
-                Padding = new Padding(0, 4, 0, 4)
+                ForeColor = Theme.Text,
+                BackColor = Theme.Card
             };
-            grpMode.Controls.Add(radCatalogMode);
-
             radEditMode = new RadioButton
             {
                 Text = "更改图号",
-                Dock = DockStyle.Top,
+                Location = new Point(110, 20),
                 AutoSize = true,
                 ForeColor = Theme.Text,
-                BackColor = Theme.Card,
-                Padding = new Padding(0, 4, 0, 4)
+                BackColor = Theme.Card
             };
+            grpMode.Controls.Add(radCatalogMode);
             grpMode.Controls.Add(radEditMode);
-            panel.Controls.Add(grpMode, 0, 0);
 
-            // 排序模式 GroupBox
+            btnReset = CreateFlatButton("重置面板", 12, 48, 75, Theme.Warning);
+            btnReset.Click += (s, e) => ResetPanel();
+            btnImport = CreateFlatButton("导入配置", 95, 48, 75, Theme.Primary);
+            btnImport.Click += (s, e) => ImportSettings();
+            btnExport = CreateFlatButton("导出当前", 178, 48, 75, Theme.AccentLight);
+            btnExport.Click += (s, e) => ExportSettings();
+
+            grpMode.Controls.Add(btnReset);
+            grpMode.Controls.Add(btnImport);
+            grpMode.Controls.Add(btnExport);
+
+            _canvasPanel.Controls.Add(grpMode);
+            curY += 95;
+
+            // === Box 2: 空间矩阵排序模式 ===
             var grpSort = new GroupBox
             {
-                Text = "排序模式",
-                Dock = DockStyle.Top,
-                Height = 140,
+                Text = "空间矩阵排序模式",
+                Location = new Point(leftX, curY),
+                Size = new Size(boxW, 75),
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
-                FlatStyle = FlatStyle.Flat,
-                Padding = new Padding(8, 16, 8, 8)
+                FlatStyle = FlatStyle.Flat
             };
-
-            radSortLR_TB = new RadioButton
-            {
-                Text = "左右 → 上下",
-                Dock = DockStyle.Top,
-                AutoSize = true,
-                ForeColor = Theme.Text,
-                BackColor = Theme.Card,
-                Padding = new Padding(0, 4, 0, 4)
-            };
-            grpSort.Controls.Add(radSortLR_TB);
 
             radSortTB_LR = new RadioButton
             {
                 Text = "上下 → 左右",
-                Dock = DockStyle.Top,
+                Location = new Point(12, 20),
+                AutoSize = true,
+                Checked = true,
+                ForeColor = Theme.Text,
+                BackColor = Theme.Card
+            };
+            radSortLR_TB = new RadioButton
+            {
+                Text = "左右 → 上下",
+                Location = new Point(12, 44),
                 AutoSize = true,
                 ForeColor = Theme.Text,
-                BackColor = Theme.Card,
-                Checked = true,
-                Padding = new Padding(0, 4, 0, 4)
+                BackColor = Theme.Card
             };
-            grpSort.Controls.Add(radSortTB_LR);
-
             radSortSelection = new RadioButton
             {
-                Text = "选择顺序",
-                Dock = DockStyle.Top,
+                Text = "选择序",
+                Location = new Point(180, 20),
                 AutoSize = true,
                 ForeColor = Theme.Text,
-                BackColor = Theme.Card,
-                Padding = new Padding(0, 4, 0, 4)
+                BackColor = Theme.Card
             };
-            grpSort.Controls.Add(radSortSelection);
-
             radSortNumeric = new RadioButton
             {
-                Text = "数值顺序",
-                Dock = DockStyle.Top,
+                Text = "数值序",
+                Location = new Point(180, 44),
                 AutoSize = true,
                 ForeColor = Theme.Text,
-                BackColor = Theme.Card,
-                Padding = new Padding(0, 4, 0, 4)
+                BackColor = Theme.Card
             };
-            grpSort.Controls.Add(radSortNumeric);
-
             chkReverse = new CheckBox
             {
                 Text = "反序",
-                Dock = DockStyle.Top,
+                Location = new Point(252, 20),
                 AutoSize = true,
-                ForeColor = Theme.TextDim,
-                BackColor = Theme.Card,
-                Padding = new Padding(0, 4, 0, 4)
+                ForeColor = Theme.Warning,
+                BackColor = Theme.Card
             };
+
+            grpSort.Controls.Add(radSortTB_LR);
+            grpSort.Controls.Add(radSortLR_TB);
+            grpSort.Controls.Add(radSortSelection);
+            grpSort.Controls.Add(radSortNumeric);
             grpSort.Controls.Add(chkReverse);
-            panel.Controls.Add(grpSort, 0, 1);
 
-            // 操作按钮 FlowLayoutPanel
-            var btnActionPanel = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Top,
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = true,
-                AutoSize = true,
-                BackColor = Theme.Bg,
-                Padding = new Padding(0, 8, 0, 0)
-            };
+            _canvasPanel.Controls.Add(grpSort);
+            curY += 85;
 
-            var btnSelect = CreateFlatButton("框选图块", 90, Theme.Primary);
-            btnSelect.Click += (s, e) => ExecuteCommand("_BCSELECT");
-            btnActionPanel.Controls.Add(btnSelect);
-
-            var btnSmart = CreateFlatButton("智能提取", 80, Theme.AccentLight);
-            btnSmart.Click += (s, e) => ExecuteCommand("_BCSMARTEXTRACT");
-            btnActionPanel.Controls.Add(btnSmart);
-
-            var btnClearData = CreateFlatButton("清除数据", 80, Theme.Warning);
-            btnClearData.Click += (s, e) => ClearData();
-            btnActionPanel.Controls.Add(btnClearData);
-
-            panel.Controls.Add(btnActionPanel, 0, 2);
-
-            // 重置/导入/导出按钮 FlowLayoutPanel
-            var btnSettingsPanel = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Top,
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = true,
-                AutoSize = true,
-                BackColor = Theme.Bg,
-                Padding = new Padding(0, 8, 0, 0)
-            };
-
-            btnReset = CreateFlatButton("重置", 55, Theme.Warning);
-            btnReset.Height = 24;
-            btnReset.Click += (s, e) => ResetPanel();
-            btnSettingsPanel.Controls.Add(btnReset);
-
-            btnImport = CreateFlatButton("导入", 55, Theme.Primary);
-            btnImport.Height = 24;
-            btnImport.Click += (s, e) => ImportSettings();
-            btnSettingsPanel.Controls.Add(btnImport);
-
-            btnExport = CreateFlatButton("导出", 55, Theme.AccentLight);
-            btnExport.Height = 24;
-            btnExport.Click += (s, e) => ExportSettings();
-            btnSettingsPanel.Controls.Add(btnExport);
-
-            panel.Controls.Add(btnSettingsPanel, 0, 3);
-
-            return panel;
-        }
-
-        /// <summary>
-        /// 创建图形缓冲区 + 缀参数区（中间栏）- 流式布局
-        /// </summary>
-        private Panel CreateBufferPanel()
-        {
-            var panel = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = Theme.Bg,
-                Padding = new Padding(4),
-                ColumnCount = 1,
-                RowCount = 2
-            };
-            panel.RowStyles.Add(new RowStyle(SizeType.Percent, 65));
-            panel.RowStyles.Add(new RowStyle(SizeType.Percent, 35));
-
-            // 上部：图形缓冲区 GroupBox
+            // === Box 3: 图形缓冲区与手动调序 ===
             var grpBuffer = new GroupBox
             {
-                Text = "图形缓冲区",
-                Dock = DockStyle.Fill,
+                Text = "图形缓冲区与手动调序",
+                Location = new Point(leftX, curY),
+                Size = new Size(boxW, 200),
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
-                FlatStyle = FlatStyle.Flat,
-                Padding = new Padding(4)
+                FlatStyle = FlatStyle.Flat
             };
 
-            // 内部 TableLayoutPanel：下拉框 + DataGridView + 右侧按钮
-            var bufferLayout = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                BackColor = Theme.Card,
-                ColumnCount = 2,
-                RowCount = 1
-            };
-            bufferLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            bufferLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50));
-
-            // 图框块名下拉去重选择框
             cmbBlockNameFilter = new ComboBox
             {
-                Dock = DockStyle.Top,
-                Height = 24,
+                Location = new Point(12, 20),
+                Size = new Size(180, 24),
                 BackColor = Theme.InputBg,
                 ForeColor = Theme.Text,
                 DropDownStyle = ComboBoxStyle.DropDownList,
@@ -500,12 +336,18 @@ namespace BlockCatalogPlugin.UI
             cmbBlockNameFilter.Items.Add("(全部)");
             cmbBlockNameFilter.SelectedIndex = 0;
             cmbBlockNameFilter.SelectedIndexChanged += (s, e) => FilterBlocksByName();
+            grpBuffer.Controls.Add(cmbBlockNameFilter);
 
-            // DataGridView
+            var btnSelect = CreateFlatButton("框选图块", 200, 18, 98, Theme.Primary);
+            btnSelect.Height = 24;
+            btnSelect.Click += (s, e) => ExecuteCommand("_BCSELECT");
+            grpBuffer.Controls.Add(btnSelect);
+
             dgvBlocks = new DataGridView
             {
-                Dock = DockStyle.Fill,
-                BackgroundColor = Theme.Card,
+                Location = new Point(12, 50),
+                Size = new Size(240, 138),
+                BackgroundColor = Theme.LogBg,
                 ForeColor = Theme.Text,
                 BorderStyle = BorderStyle.None,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
@@ -514,357 +356,204 @@ namespace BlockCatalogPlugin.UI
                 AllowUserToDeleteRows = false,
                 ReadOnly = true,
                 RowHeadersVisible = false,
-                ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
-                ColumnHeadersHeight = 25,
-                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-                ScrollBars = ScrollBars.Vertical
+                ColumnHeadersHeight = 24,
+                ScrollBars = ScrollBars.Vertical,
+                AllowDrop = true
             };
             dgvBlocks.EnableHeadersVisualStyles = false;
             dgvBlocks.ColumnHeadersDefaultCellStyle.BackColor = Theme.CardHover;
             dgvBlocks.ColumnHeadersDefaultCellStyle.ForeColor = Theme.TextBright;
             dgvBlocks.DefaultCellStyle.BackColor = Theme.Card;
             dgvBlocks.DefaultCellStyle.ForeColor = Theme.Text;
-            dgvBlocks.AlternatingRowsDefaultCellStyle.BackColor = Theme.Card;
-            dgvBlocks.AllowDrop = true;
 
-            // DataGridView 拖拽排序支持
             dgvBlocks.MouseDown += DgvBlocks_MouseDown;
             dgvBlocks.MouseMove += DgvBlocks_MouseMove;
             dgvBlocks.MouseUp += DgvBlocks_MouseUp;
             dgvBlocks.DragOver += DgvBlocks_DragOver;
             dgvBlocks.DragDrop += DgvBlocks_DragDrop;
 
-            // 右侧小按钮 FlowLayoutPanel
-            var btnActionPanel = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = false,
-                BackColor = Theme.Card
-            };
+            grpBuffer.Controls.Add(dgvBlocks);
 
-            var btnPick = CreateFlatButton("选块", 42, Theme.Primary);
-            btnPick.Height = 24;
-            btnPick.Click += (s, e) => ExecuteCommand("_BCSELECT");
-            btnActionPanel.Controls.Add(btnPick);
-
-            var btnRemove = CreateFlatButton("删块", 42, Theme.Warning);
+            var btnRemove = CreateFlatButton("删块", 258, 50, 42, Theme.Warning);
             btnRemove.Height = 24;
             btnRemove.Click += (s, e) => RemoveSelectedBlock();
-            btnActionPanel.Controls.Add(btnRemove);
-
-            var btnMoveUp = CreateFlatButton("▲", 42, Theme.Primary);
+            var btnMoveUp = CreateFlatButton("▲", 258, 90, 42, Theme.Primary);
             btnMoveUp.Height = 24;
             btnMoveUp.Click += (s, e) => MoveBlockUp();
-            btnActionPanel.Controls.Add(btnMoveUp);
-
-            var btnMoveDown = CreateFlatButton("▼", 42, Theme.Primary);
+            var btnMoveDown = CreateFlatButton("▼", 258, 120, 42, Theme.Primary);
             btnMoveDown.Height = 24;
             btnMoveDown.Click += (s, e) => MoveBlockDown();
-            btnActionPanel.Controls.Add(btnMoveDown);
 
-            // 左侧：下拉框 + DataGridView
-            var leftPanel = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                RowCount = 2,
-                ColumnCount = 1,
-                BackColor = Theme.Card
-            };
-            leftPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
-            leftPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            leftPanel.Controls.Add(cmbBlockNameFilter, 0, 0);
-            leftPanel.Controls.Add(dgvBlocks, 0, 1);
+            grpBuffer.Controls.Add(btnRemove);
+            grpBuffer.Controls.Add(btnMoveUp);
+            grpBuffer.Controls.Add(btnMoveDown);
 
-            bufferLayout.Controls.Add(leftPanel, 0, 0);
-            bufferLayout.Controls.Add(btnActionPanel, 1, 0);
-            grpBuffer.Controls.Add(bufferLayout);
-            panel.Controls.Add(grpBuffer, 0, 0);
+            _canvasPanel.Controls.Add(grpBuffer);
+            curY += 210;
 
-            // 下部：缀参数重编设置 GroupBox
+            // === Box 4: 缀参数规律重编属性 ===
             var grpSuffix = new GroupBox
             {
-                Text = "缀参数重编",
-                Dock = DockStyle.Fill,
+                Text = "缀参数规律重编属性",
+                Location = new Point(leftX, curY),
+                Size = new Size(boxW, 105),
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
-                FlatStyle = FlatStyle.Flat,
-                Padding = new Padding(4)
+                FlatStyle = FlatStyle.Flat
             };
 
-            // 内部 FlowLayoutPanel 实现自动折行
-            var suffixFlow = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = true,
-                BackColor = Theme.Card,
-                AutoScroll = false
-            };
+            var lblStart = new Label { Text = "缀始", Location = new Point(12, 22), AutoSize = true, ForeColor = Theme.TextDim };
+            txtSuffixStart = new TextBox { Location = new Point(45, 19), Width = 40, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Text = "1" };
+            var lblLen = new Label { Text = "缀长", Location = new Point(95, 22), AutoSize = true, ForeColor = Theme.TextDim };
+            txtSuffixLength = new TextBox { Location = new Point(128, 19), Width = 30, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Text = "2" };
+            chkSuffixContinuous = new CheckBox { Text = "连续连号", Location = new Point(170, 20), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
 
-            // 第一行：缀始 | 缀长 | 连续
-            var row1 = new FlowLayoutPanel
-            {
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false,
-                AutoSize = true,
-                BackColor = Theme.Card
-            };
-            var lblStart = new Label { Text = "缀始:", AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F) };
-            row1.Controls.Add(lblStart);
-            txtSuffixStart = new TextBox { Width = 50, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Microsoft YaHei UI", 8F), Text = "1" };
-            row1.Controls.Add(txtSuffixStart);
-            var lblLen = new Label { Text = "缀长:", AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F), Margin = new Padding(8, 0, 0, 0) };
-            row1.Controls.Add(lblLen);
-            txtSuffixLength = new TextBox { Width = 40, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Microsoft YaHei UI", 8F), Text = "2" };
-            row1.Controls.Add(txtSuffixLength);
-            chkSuffixContinuous = new CheckBox { Text = "连续", AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card, Checked = true, Margin = new Padding(8, 0, 0, 0) };
-            row1.Controls.Add(chkSuffixContinuous);
+            grpSuffix.Controls.AddRange(new Control[] { lblStart, txtSuffixStart, lblLen, txtSuffixLength, chkSuffixContinuous });
 
-            // 第二行：前缀 | 后缀
-            var row2 = new FlowLayoutPanel
-            {
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false,
-                AutoSize = true,
-                BackColor = Theme.Card
-            };
-            var lblPrefix = new Label { Text = "前缀:", AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F) };
-            row2.Controls.Add(lblPrefix);
-            txtSuffixPrefix = new TextBox { Width = 80, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Microsoft YaHei UI", 8F) };
-            row2.Controls.Add(txtSuffixPrefix);
-            var lblSuffix = new Label { Text = "后缀:", AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F), Margin = new Padding(8, 0, 0, 0) };
-            row2.Controls.Add(lblSuffix);
-            txtSuffixSuffix = new TextBox { Width = 70, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Microsoft YaHei UI", 8F) };
-            row2.Controls.Add(txtSuffixSuffix);
+            var lblPrefix = new Label { Text = "前缀", Location = new Point(12, 48), AutoSize = true, ForeColor = Theme.TextDim };
+            txtSuffixPrefix = new TextBox { Location = new Point(45, 45), Width = 75, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle };
+            var lblSuffix = new Label { Text = "后缀", Location = new Point(130, 48), AutoSize = true, ForeColor = Theme.TextDim };
+            txtSuffixSuffix = new TextBox { Location = new Point(162, 45), Width = 65, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle };
 
-            // 第三行：按钮
-            var row3 = new FlowLayoutPanel
-            {
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false,
-                AutoSize = true,
-                BackColor = Theme.Card
-            };
-            var btnApplySuffix = CreateFlatButton("应用缀编号", 90, Theme.Success);
-            btnApplySuffix.Height = 26;
+            grpSuffix.Controls.AddRange(new Control[] { lblPrefix, txtSuffixPrefix, lblSuffix, txtSuffixSuffix });
+
+            var btnApplySuffix = CreateFlatButton("应用缀编号", 12, 73, 90, Theme.Success);
+            btnApplySuffix.Height = 22;
             btnApplySuffix.Click += (s, e) => ApplySuffixRename();
-            row3.Controls.Add(btnApplySuffix);
-            var btnPreviewSuffix = CreateFlatButton("预览", 60, Theme.Primary);
-            btnPreviewSuffix.Height = 26;
+            var btnPreviewSuffix = CreateFlatButton("预览序列", 110, 73, 65, Theme.Primary);
+            btnPreviewSuffix.Height = 22;
             btnPreviewSuffix.Click += (s, e) => PreviewSuffixRename();
-            row3.Controls.Add(btnPreviewSuffix);
 
-            suffixFlow.Controls.Add(row1);
-            suffixFlow.Controls.Add(row2);
-            suffixFlow.Controls.Add(row3);
-            grpSuffix.Controls.Add(suffixFlow);
-            panel.Controls.Add(grpSuffix, 0, 1);
+            grpSuffix.Controls.AddRange(new Control[] { btnApplySuffix, btnPreviewSuffix });
 
-            return panel;
-        }
+            _canvasPanel.Controls.Add(grpSuffix);
+            curY += 115;
 
-        /// <summary>
-        /// 创建目录输出区（右侧栏）
-        /// </summary>
-        private Panel CreateOutputPanel()
-        {
-            var panel = new TableLayoutPanel
+            // === Box 5: 列宽表达式与表格参数 ===
+            var grpFormula = new GroupBox
             {
-                Dock = DockStyle.Fill,
-                BackColor = Theme.Bg,
-                Padding = new Padding(4),
-                ColumnCount = 1,
-                RowCount = 5
-            };
-            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 65));
-            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 105));
-            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 45));
-            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-            panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-
-            // 列宽公式 GroupBox
-            var grpColWidth = new GroupBox
-            {
-                Text = "列宽公式",
-                Dock = DockStyle.Fill,
+                Text = "列宽表达式与表格参数",
+                Location = new Point(leftX, curY),
+                Size = new Size(boxW, 115),
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
-                FlatStyle = FlatStyle.Flat,
-                Padding = new Padding(4)
+                FlatStyle = FlatStyle.Flat
             };
 
-            var colWidthFlow = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Top,
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = false,
-                BackColor = Theme.Card,
-                AutoSize = true
-            };
-
+            var lblForm = new Label { Text = "公式:", Location = new Point(12, 22), AutoSize = true, ForeColor = Theme.TextDim };
             txtColumnFormula = new TextBox
             {
-                Width = 200,
+                Location = new Point(50, 19),
+                Width = 150,
                 BackColor = Theme.InputBg,
                 ForeColor = Theme.Text,
                 BorderStyle = BorderStyle.FixedSingle,
-                Font = new Font("Consolas", 8F),
+                Font = new Font("Consolas", 8.5F),
                 Text = "20+40+60"
             };
-            colWidthFlow.Controls.Add(txtColumnFormula);
+            var btnApplyForm = CreateFlatButton("应用", 210, 18, 42, Theme.Primary);
+            btnApplyForm.Height = 20;
+            btnApplyForm.Click += (s, e) => ApplyColumnFormula();
+            var btnGetForm = CreateFlatButton("获取", 256, 18, 42, Theme.Accent);
+            btnGetForm.Height = 20;
+            btnGetForm.Click += (s, e) => txtColumnFormula.Text = _currentStyle.GetFormulaWidths();
 
-            var btnRow = new FlowLayoutPanel
+            grpFormula.Controls.AddRange(new Control[] { lblForm, txtColumnFormula, btnApplyForm, btnGetForm });
+
+            var lblFontH = new Label { Text = "字高", Location = new Point(12, 48), AutoSize = true, ForeColor = Theme.TextDim };
+            numFontHeight = new NumericUpDown { Location = new Point(45, 46), Width = 45, Minimum = 1, Maximum = 20, Value = 3.5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
+            var lblRowH = new Label { Text = "行高", Location = new Point(100, 48), AutoSize = true, ForeColor = Theme.TextDim };
+            numRowHeight = new NumericUpDown { Location = new Point(132, 46), Width = 45, Minimum = 1, Maximum = 50, Value = 5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
+            chkShowHeader = new CheckBox { Text = "绘表头", Location = new Point(190, 47), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+
+            grpFormula.Controls.AddRange(new Control[] { lblFontH, numFontHeight, lblRowH, numRowHeight, chkShowHeader });
+
+            var lblOut = new Label { Text = "目标空间", Location = new Point(12, 76), AutoSize = true, ForeColor = Theme.TextDim };
+            radModelSpace = new RadioButton { Text = "模型", Location = new Point(70, 74), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            radLayout = new RadioButton { Text = "布局", Location = new Point(125, 74), AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            cmbLayoutName = new ComboBox
             {
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false,
-                AutoSize = true,
-                BackColor = Theme.Card
-            };
-            var btnApplyFormula = CreateFlatButton("应用", 55, Theme.Primary);
-            btnApplyFormula.Height = 22;
-            btnApplyFormula.Click += (s, e) => ApplyColumnFormula();
-            btnRow.Controls.Add(btnApplyFormula);
-
-            var btnGetFormula = CreateFlatButton("获取", 55, Theme.Accent);
-            btnGetFormula.Height = 22;
-            btnGetFormula.Click += (s, e) => txtColumnFormula.Text = _currentStyle.GetFormulaWidths();
-            btnRow.Controls.Add(btnGetFormula);
-            colWidthFlow.Controls.Add(btnRow);
-
-            grpColWidth.Controls.Add(colWidthFlow);
-            panel.Controls.Add(grpColWidth, 0, 0);
-
-            // 表格样式 GroupBox
-            var grpStyle = new GroupBox
-            {
-                Text = "表格样式",
-                Dock = DockStyle.Fill,
-                BackColor = Theme.Card,
-                ForeColor = Theme.Text,
+                Location = new Point(180, 73),
+                Width = 75,
+                DropDownStyle = ComboBoxStyle.DropDownList,
                 FlatStyle = FlatStyle.Flat,
-                Padding = new Padding(4)
+                Enabled = false,
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text
             };
-
-            var styleFlow = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Top,
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = true,
-                BackColor = Theme.Card,
-                AutoSize = true
-            };
-
-            // 第一行：字高 + 行高
-            var row1 = new FlowLayoutPanel
-            {
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false,
-                AutoSize = true,
-                BackColor = Theme.Card
-            };
-            var lblFontH = new Label { Text = "字高:", AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F) };
-            row1.Controls.Add(lblFontH);
-            numFontHeight = new NumericUpDown { Width = 55, Minimum = 1, Maximum = 20, Value = 3.5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
-            row1.Controls.Add(numFontHeight);
-            var lblRowH = new Label { Text = "行高:", AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F), Margin = new Padding(10, 0, 0, 0) };
-            row1.Controls.Add(lblRowH);
-            numRowHeight = new NumericUpDown { Width = 55, Minimum = 1, Maximum = 50, Value = 5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
-            row1.Controls.Add(numRowHeight);
-
-            // 第二行：显示表头
-            var row2 = new FlowLayoutPanel
-            {
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false,
-                AutoSize = true,
-                BackColor = Theme.Card
-            };
-            chkShowHeader = new CheckBox { Text = "显示表头", AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card, Checked = true };
-            row2.Controls.Add(chkShowHeader);
-
-            // 第三行：输出目标
-            var row3 = new FlowLayoutPanel
-            {
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false,
-                AutoSize = true,
-                BackColor = Theme.Card
-            };
-            var lblLayout = new Label { Text = "输出:", AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F) };
-            row3.Controls.Add(lblLayout);
-            radModelSpace = new RadioButton { Text = "模型", AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card, Checked = true };
-            row3.Controls.Add(radModelSpace);
-            radLayout = new RadioButton { Text = "布局", AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card };
-            row3.Controls.Add(radLayout);
-            cmbLayoutName = new ComboBox { Width = 70, DropDownStyle = ComboBoxStyle.DropDownList, BackColor = Theme.InputBg, ForeColor = Theme.Text, Enabled = false };
             cmbLayoutName.Items.Add("Model");
             cmbLayoutName.SelectedIndex = 0;
-            row3.Controls.Add(cmbLayoutName);
             radLayout.CheckedChanged += (s, e) => { cmbLayoutName.Enabled = radLayout.Checked; };
 
-            styleFlow.Controls.Add(row1);
-            styleFlow.Controls.Add(row2);
-            styleFlow.Controls.Add(row3);
-            grpStyle.Controls.Add(styleFlow);
-            panel.Controls.Add(grpStyle, 0, 1);
+            grpFormula.Controls.AddRange(new Control[] { lblOut, radModelSpace, radLayout, cmbLayoutName });
 
-            // 间距表达式
-            var grpSpacing = new GroupBox
-            {
-                Text = "间距表达式",
-                Dock = DockStyle.Fill,
-                BackColor = Theme.Card,
-                ForeColor = Theme.Text,
-                FlatStyle = FlatStyle.Flat,
-                Padding = new Padding(4)
-            };
+            _canvasPanel.Controls.Add(grpFormula);
+            curY += 125;
 
+            // === 间距公式 ===
+            var lblSpace = new Label { Text = "间距公式:", Location = new Point(leftX + 6, curY + 4), AutoSize = true, ForeColor = Theme.TextDim };
             txtSpacingExpression = new TextBox
             {
-                Dock = DockStyle.Top,
-                Height = 24,
+                Location = new Point(leftX + 70, curY + 2),
+                Width = 238,
                 BackColor = Theme.InputBg,
                 ForeColor = Theme.Text,
                 BorderStyle = BorderStyle.FixedSingle,
-                Font = new Font("Consolas", 8F),
                 Text = "5"
             };
-            grpSpacing.Controls.Add(txtSpacingExpression);
-            panel.Controls.Add(grpSpacing, 0, 2);
+            _canvasPanel.Controls.Add(lblSpace);
+            _canvasPanel.Controls.Add(txtSpacingExpression);
+            curY += 30;
 
-            // 输出按钮区
-            var btnFlow = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = false,
-                BackColor = Theme.Bg
-            };
-
-            var btnPreview = CreateFlatButton("预览目录", 120, Theme.Primary);
+            // === 输出按钮 ===
+            var btnPreview = CreateFlatButton("预览目录表格", boxW, Theme.Primary);
+            btnPreview.Location = new Point(leftX, curY);
             btnPreview.Height = 30;
             btnPreview.Click += (s, e) => ShowPreview();
-            btnFlow.Controls.Add(btnPreview);
+            _canvasPanel.Controls.Add(btnPreview);
+            curY += 36;
 
-            var btnGenerate = CreateFlatButton("生成目录", 120, Theme.Success);
-            btnGenerate.Height = 35;
+            var btnGenerate = CreateFlatButton("指定点绘制目录", boxW, Theme.Success);
+            btnGenerate.Location = new Point(leftX, curY);
+            btnGenerate.Height = 36;
+            btnGenerate.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
             btnGenerate.Click += (s, e) => GenerateToPosition();
-            btnFlow.Controls.Add(btnGenerate);
+            _canvasPanel.Controls.Add(btnGenerate);
+            curY += 42;
 
-            var btnSyncAttrs = CreateFlatButton("同步至图纸属性", 120, Theme.AccentLight);
+            var btnSyncAttrs = CreateFlatButton("一键反向同步至图纸块属性", boxW, Theme.AccentLight);
+            btnSyncAttrs.Location = new Point(leftX, curY);
             btnSyncAttrs.Height = 30;
             btnSyncAttrs.Click += (s, e) => SyncAttributesToBlocks();
-            btnFlow.Controls.Add(btnSyncAttrs);
+            _canvasPanel.Controls.Add(btnSyncAttrs);
+        }
 
-            panel.Controls.Add(btnFlow, 0, 3);
+        private Button CreateFlatButton(string text, int x, int y, int width, Color? bgColor = null)
+        {
+            var btn = new Button
+            {
+                Text = text,
+                Location = new Point(x, y),
+                Width = width,
+                Height = 26,
+                BackColor = bgColor ?? Theme.Card,
+                ForeColor = Theme.Text,
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand,
+                Font = new Font("Microsoft YaHei UI", 8F)
+            };
+            btn.FlatAppearance.BorderSize = 0;
+            return btn;
+        }
 
-            return panel;
+        private Button CreateFlatButton(string text, int width, Color? bgColor = null)
+        {
+            return CreateFlatButton(text, 0, 0, width, bgColor);
         }
 
         private void ExecuteCommand(string command)
         {
-            var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc != null)
             {
                 AppendLog($"执行: {command}", Theme.TextDim);
@@ -877,25 +566,21 @@ namespace BlockCatalogPlugin.UI
             _currentResult = null;
             _selectedBlockNames.Clear();
             _selectedTags.Clear();
-            if (dgvBlocks != null)
-                dgvBlocks.DataSource = null;
+            if (dgvBlocks != null) dgvBlocks.DataSource = null;
             AppendLog("已清除数据", Theme.TextDim);
         }
 
         private void ResetPanel()
         {
-            // 重置缀参数控件
             txtSuffixStart.Text = "1";
             txtSuffixLength.Text = "2";
             txtSuffixPrefix.Text = "";
             txtSuffixSuffix.Text = "";
             chkSuffixContinuous.Checked = true;
 
-            // 重置排序选项
             radSortTB_LR.Checked = true;
             chkReverse.Checked = false;
 
-            // 重置表格样式控件
             numFontHeight.Value = 3.5m;
             numRowHeight.Value = 5m;
             chkShowHeader.Checked = true;
@@ -903,7 +588,6 @@ namespace BlockCatalogPlugin.UI
             txtSpacingExpression.Text = "5";
             radModelSpace.Checked = true;
 
-            // 重置下拉框
             if (cmbBlockNameFilter != null)
             {
                 cmbBlockNameFilter.Items.Clear();
@@ -911,9 +595,7 @@ namespace BlockCatalogPlugin.UI
                 cmbBlockNameFilter.SelectedIndex = 0;
             }
 
-            // 清除数据
             ClearData();
-
             AppendLog("面板已重置", Theme.Success);
         }
 
@@ -972,48 +654,6 @@ namespace BlockCatalogPlugin.UI
             }
         }
 
-        private void FilterBlocksByName()
-        {
-            if (_currentResult == null || dgvBlocks == null) return;
-
-            string selectedFilter = cmbBlockNameFilter?.SelectedItem?.ToString() ?? "(全部)";
-
-            if (string.IsNullOrEmpty(selectedFilter) || selectedFilter == "(全部)")
-            {
-                // 显示所有块
-                RefreshDataGridView();
-            }
-            else
-            {
-                // 按块名筛选
-                var filteredBlocks = _currentResult.Blocks.Where(b => b.BlockName == selectedFilter).ToList();
-                dgvBlocks.DataSource = null;
-                dgvBlocks.Columns.Clear();
-
-                int startNum = 1, numLength = 2;
-                int.TryParse(txtSuffixStart.Text, out startNum);
-                int.TryParse(txtSuffixLength.Text, out numLength);
-                string prefix = txtSuffixPrefix.Text ?? "";
-                string suffix = txtSuffixSuffix.Text ?? "";
-                var previewValues = _suffixEngine.GenerateNumberSequence(filteredBlocks.Count, prefix, suffix, startNum, numLength);
-
-                dgvBlocks.DataSource = filteredBlocks.Select((b, idx) => new
-                {
-                    块名 = b.BlockName,
-                    图号 = b.GetAttribute("XH") ?? b.GetAttribute("TH") ?? "",
-                    图名 = b.GetAttribute("TM") ?? "",
-                    幅面 = b.GetAttribute("FM") ?? "",
-                    X = Math.Round(b.Position.X, 1),
-                    Y = Math.Round(b.Position.Y, 1),
-                    当前提取值 = b.GetAttribute("XH") ?? b.GetAttribute("TH") ?? "",
-                    重编预览值 = idx < previewValues.Count ? previewValues[idx] : ""
-                }).ToList();
-            }
-        }
-
-        /// <summary>
-        /// 收集当前面板设置
-        /// </summary>
         private PanelSettings CollectSettings()
         {
             return new PanelSettings
@@ -1034,9 +674,6 @@ namespace BlockCatalogPlugin.UI
             };
         }
 
-        /// <summary>
-        /// 应用设置到面板
-        /// </summary>
         private void ApplySettings(PanelSettings settings)
         {
             if (settings == null) return;
@@ -1079,9 +716,6 @@ namespace BlockCatalogPlugin.UI
             radSortNumeric.Checked = index == 3;
         }
 
-        /// <summary>
-        /// 动态识别当前图纸中的有效图号标签（TH > 图号 > XH）
-        /// </summary>
         private string GetActiveTag()
         {
             if (_currentResult != null && _currentResult.Blocks.Count > 0)
@@ -1090,12 +724,9 @@ namespace BlockCatalogPlugin.UI
                 if (firstBlock.GetAttribute("TH") != null) return "TH";
                 if (firstBlock.GetAttribute("图号") != null) return "图号";
             }
-            return "XH"; // 缺省默认
+            return "XH";
         }
 
-        /// <summary>
-        /// 面板设置数据结构（用于导入/导出）
-        /// </summary>
         private class PanelSettings
         {
             public string SuffixStart { get; set; } = "1";
@@ -1166,30 +797,56 @@ namespace BlockCatalogPlugin.UI
             dgvBlocks.DataSource = null;
             dgvBlocks.Columns.Clear();
 
-            // 生成预览值序列
             int startNum = 1, numLength = 2;
             int.TryParse(txtSuffixStart.Text, out startNum);
             int.TryParse(txtSuffixLength.Text, out numLength);
             string prefix = txtSuffixPrefix.Text ?? "";
             string suffix = txtSuffixSuffix.Text ?? "";
 
-            var engine = _suffixEngine;
-            var previewValues = engine.GenerateNumberSequence(_currentResult.Blocks.Count, prefix, suffix, startNum, numLength);
+            var previewValues = _suffixEngine.GenerateNumberSequence(_currentResult.Blocks.Count, prefix, suffix, startNum, numLength);
 
             dgvBlocks.DataSource = _currentResult.Blocks.Select((b, idx) => new
             {
                 块名 = b.BlockName,
                 图号 = b.GetAttribute("XH") ?? b.GetAttribute("TH") ?? "",
                 图名 = b.GetAttribute("TM") ?? "",
-                幅面 = b.GetAttribute("FM") ?? "",
-                X = Math.Round(b.Position.X, 1),
-                Y = Math.Round(b.Position.Y, 1),
-                当前提取值 = b.GetAttribute("XH") ?? b.GetAttribute("TH") ?? "",
-                重编预览值 = idx < previewValues.Count ? previewValues[idx] : ""
+                重编预览 = idx < previewValues.Count ? previewValues[idx] : ""
             }).ToList();
 
-            // 刷新下拉框的块名列表
             RefreshBlockNameFilter();
+        }
+
+        private void FilterBlocksByName()
+        {
+            if (_currentResult == null || dgvBlocks == null) return;
+
+            string selectedFilter = cmbBlockNameFilter?.SelectedItem?.ToString() ?? "(全部)";
+
+            if (string.IsNullOrEmpty(selectedFilter) || selectedFilter == "(全部)")
+            {
+                RefreshDataGridView();
+            }
+            else
+            {
+                var filteredBlocks = _currentResult.Blocks.Where(b => b.BlockName == selectedFilter).ToList();
+                dgvBlocks.DataSource = null;
+                dgvBlocks.Columns.Clear();
+
+                int startNum = 1, numLength = 2;
+                int.TryParse(txtSuffixStart.Text, out startNum);
+                int.TryParse(txtSuffixLength.Text, out numLength);
+                string prefix = txtSuffixPrefix.Text ?? "";
+                string suffix = txtSuffixSuffix.Text ?? "";
+                var previewValues = _suffixEngine.GenerateNumberSequence(filteredBlocks.Count, prefix, suffix, startNum, numLength);
+
+                dgvBlocks.DataSource = filteredBlocks.Select((b, idx) => new
+                {
+                    块名 = b.BlockName,
+                    图号 = b.GetAttribute("XH") ?? b.GetAttribute("TH") ?? "",
+                    图名 = b.GetAttribute("TM") ?? "",
+                    重编预览 = idx < previewValues.Count ? previewValues[idx] : ""
+                }).ToList();
+            }
         }
 
         private void RefreshBlockNameFilter()
@@ -1201,23 +858,13 @@ namespace BlockCatalogPlugin.UI
             cmbBlockNameFilter.Items.Clear();
             cmbBlockNameFilter.Items.Add("(全部)");
 
-            var distinctNames = _currentResult.Blocks
-                .Select(b => b.BlockName)
-                .Distinct()
-                .OrderBy(n => n)
-                .ToList();
-
+            var distinctNames = _currentResult.Blocks.Select(b => b.BlockName).Distinct().OrderBy(n => n).ToList();
             cmbBlockNameFilter.Items.AddRange(distinctNames.ToArray());
 
-            // 恢复之前的选中项
             if (!string.IsNullOrEmpty(currentSelection) && cmbBlockNameFilter.Items.Contains(currentSelection))
-            {
                 cmbBlockNameFilter.SelectedItem = currentSelection;
-            }
             else
-            {
                 cmbBlockNameFilter.SelectedIndex = 0;
-            }
         }
 
         private void DgvBlocks_MouseDown(object sender, MouseEventArgs e)
@@ -1262,23 +909,21 @@ namespace BlockCatalogPlugin.UI
         {
             if (_currentResult == null || _currentResult.Blocks.Count == 0) return;
 
-            var hit = dgvBlocks.HitTest(dgvBlocks.PointToClient(new Point(e.X, e.Y)).X, dgvBlocks.PointToClient(new Point(e.X, e.Y)).Y);
+            var hit = dgvBlocks.HitTest(
+                dgvBlocks.PointToClient(new Point(e.X, e.Y)).X,
+                dgvBlocks.PointToClient(new Point(e.X, e.Y)).Y);
             int targetIndex = hit.RowIndex;
 
             if (targetIndex < 0 || _dragRowIndex < 0 || targetIndex == _dragRowIndex) return;
 
-            // 标准 RemoveAt/Insert 插队逻辑（去掉错误的-1修正）
             var draggedBlock = _currentResult.Blocks[_dragRowIndex];
             _currentResult.Blocks.RemoveAt(_dragRowIndex);
             _currentResult.Blocks.Insert(targetIndex, draggedBlock);
 
             RefreshDataGridView();
 
-            // 选中新位置的行
             if (targetIndex >= 0 && targetIndex < dgvBlocks.Rows.Count)
-            {
                 dgvBlocks.Rows[targetIndex].Selected = true;
-            }
 
             _dragRowIndex = -1;
             _isDragging = false;
@@ -1305,7 +950,6 @@ namespace BlockCatalogPlugin.UI
                 return;
             }
 
-            // 获取当前筛选范围
             string selectedFilter = cmbBlockNameFilter?.SelectedItem?.ToString() ?? "(全部)";
             var targetBlocks = (selectedFilter != "(全部)")
                 ? _currentResult.Blocks.Where(b => b.BlockName == selectedFilter).ToList()
@@ -1322,14 +966,8 @@ namespace BlockCatalogPlugin.UI
             string prefix = txtSuffixPrefix.Text ?? "";
             string suffix = txtSuffixSuffix.Text ?? "";
 
-            var engine = new BlockCatalogPlugin.SuffixPatternEngine();
-            bool success = engine.BulkRenameAttributes(
-                targetBlocks,
-                GetActiveTag(),
-                prefix,
-                suffix,
-                startNum,
-                numLength);
+            bool success = _suffixEngine.BulkRenameAttributes(
+                targetBlocks, GetActiveTag(), prefix, suffix, startNum, numLength);
 
             if (success)
             {
@@ -1355,10 +993,8 @@ namespace BlockCatalogPlugin.UI
             string prefix = txtSuffixPrefix.Text ?? "";
             string suffix = txtSuffixSuffix.Text ?? "";
 
-            var engine = new BlockCatalogPlugin.SuffixPatternEngine();
-            var preview = engine.GenerateNumberSequence(_currentResult.Blocks.Count, prefix, suffix, startNum, numLength);
-
-            AppendLog("预览: " + string.Join(", ", preview.Take(5).ToArray()) + (preview.Count > 5 ? "..." : ""), Theme.TextDim);
+            var preview = _suffixEngine.GenerateNumberSequence(_currentResult.Blocks.Count, prefix, suffix, startNum, numLength);
+            AppendLog("预览: " + string.Join(", ", preview.Take(4).ToArray()) + (preview.Count > 4 ? "..." : ""), Theme.TextDim);
         }
 
         private void SyncAttributesToBlocks()
@@ -1369,7 +1005,6 @@ namespace BlockCatalogPlugin.UI
                 return;
             }
 
-            // 获取当前筛选范围
             string selectedFilter = cmbBlockNameFilter?.SelectedItem?.ToString() ?? "(全部)";
             var targetBlocks = (selectedFilter != "(全部)")
                 ? _currentResult.Blocks.Where(b => b.BlockName == selectedFilter).ToList()
@@ -1389,17 +1024,12 @@ namespace BlockCatalogPlugin.UI
             AppendLog($"正在同步属性到图纸...", Theme.TextDim);
 
             bool success = _suffixEngine.BulkRenameAttributes(
-                targetBlocks,
-                GetActiveTag(),
-                prefix,
-                suffix,
-                startNum,
-                numLength);
+                targetBlocks, GetActiveTag(), prefix, suffix, startNum, numLength);
 
             if (success)
             {
                 RefreshDataGridView();
-                AppendLog($"属性同步完成", Theme.Success);
+                AppendLog("属性同步完成", Theme.Success);
             }
             else
             {
@@ -1435,7 +1065,7 @@ namespace BlockCatalogPlugin.UI
             }
 
             AppendLog("请在CAD中指定目录插入位置...", Theme.Primary);
-            var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            var doc = Application.DocumentManager.MdiActiveDocument;
             if (doc != null)
             {
                 Plugin._pendingGenerateAfterPick = true;
@@ -1443,33 +1073,28 @@ namespace BlockCatalogPlugin.UI
             }
         }
 
-        #region Event Handlers
-
-        /// <summary>
-        /// Callback when blocks are selected via CAD command
-        /// </summary>
         public void OnBlocksSelected(ExtractionResult result)
         {
-            _currentResult = result;
-            _selectedBlockNames = result.Blocks.Select(b => b.BlockName).Distinct().ToList();
-            _selectedTags = result.AllTags.ToList();
-
-            // 刷新 DataGridView
-            RefreshDataGridView();
-
-            AppendLog($"已提取 {result.Blocks.Count} 个块", Theme.Success);
+            try
+            {
+                _currentResult = result;
+                _selectedBlockNames = result.Blocks.Select(b => b.BlockName).Distinct().ToList();
+                _selectedTags = result.AllTags.ToList();
+                RefreshDataGridView();
+                AppendLog($"已提取 {result.Blocks.Count} 个块", Theme.Success);
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"处理提取结果失败: {ex.Message}", Theme.Error);
+            }
         }
 
-        /// <summary>
-        /// Insert point selected callback
-        /// </summary>
         public void OnInsertPointSelected(Point3d pos)
         {
             AppendLog($"插入点已设置: ({pos.X:F1}, {pos.Y:F1})", Theme.Success);
 
             try
             {
-                // 获取当前筛选范围
                 string selectedFilter = cmbBlockNameFilter?.SelectedItem?.ToString() ?? "(全部)";
                 var targetBlocks = (selectedFilter != "(全部)")
                     ? _currentResult.Blocks.Where(b => b.BlockName == selectedFilter).ToList()
@@ -1481,41 +1106,34 @@ namespace BlockCatalogPlugin.UI
                     return;
                 }
 
-                // 根据排序模式获取排序后的数据（含容差和反序参数）
                 var sortType = GetSelectedSortType();
                 var sortedBlocks = _sortEngine.Sort(targetBlocks, sortType, 500.0, chkReverse.Checked);
 
                 string targetLayout = null;
                 if (radLayout.Checked && cmbLayoutName.SelectedItem != null)
-                {
                     targetLayout = cmbLayoutName.SelectedItem.ToString();
-                }
 
-                // 将排序后的 AttributeBlockData 转换为 BlockDataResult
                 var blockDataResult = new BlockDataResult();
                 foreach (var attrBlock in sortedBlocks)
                 {
-                    var blockData = new BlockData
+                    blockDataResult.Blocks.Add(new BlockData
                     {
                         BlockName = attrBlock.BlockName,
                         ObjectId = attrBlock.BlockId,
-                        Attributes = attrBlock.Attributes?.Select(kv => new BlockAttribute { Tag = kv.Key, Value = kv.Value }).ToList()
+                        Attributes = attrBlock.Attributes?
+                            .Select(kv => new BlockAttribute { Tag = kv.Key, Value = kv.Value }).ToList()
                             ?? new List<BlockAttribute>()
-                    };
-                    blockDataResult.Blocks.Add(blockData);
+                    });
                 }
 
-                // 调用真正的 Generate 方法生成带网格线的目录实体
                 var entities = _generator.Generate(blockDataResult, _currentStyle, pos, targetLayout);
 
-                // 将实体写入 CAD 图纸数据库
-                var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+                var doc = Application.DocumentManager.MdiActiveDocument;
                 if (doc != null)
                 {
                     using (var docLock = doc.LockDocument())
                     using (var tr = doc.Database.TransactionManager.StartTransaction())
                     {
-                        // 获取目标空间（模型空间或布局）
                         BlockTableRecord ms;
                         if (!string.IsNullOrEmpty(targetLayout))
                         {
@@ -1528,7 +1146,6 @@ namespace BlockCatalogPlugin.UI
                             ms = (BlockTableRecord)tr.GetObject(doc.Database.CurrentSpaceId, OpenMode.ForWrite);
                         }
 
-                        // 将所有生成的实体添加到图纸
                         foreach (var entity in entities)
                         {
                             ms.AppendEntity(entity);
@@ -1540,7 +1157,6 @@ namespace BlockCatalogPlugin.UI
                 }
 
                 AppendLog("目录已生成", Theme.Success);
-
                 if (targetLayout != null)
                     AppendLog($"  插入到布局: {targetLayout}", Theme.TextDim);
             }
@@ -1550,16 +1166,11 @@ namespace BlockCatalogPlugin.UI
             }
         }
 
-        /// <summary>
-        /// Block picked callback
-        /// </summary>
         public void OnBlockPicked(string blockName)
         {
             AppendLog($"已选择块: {blockName}", Theme.TextDim);
             if (!string.IsNullOrEmpty(blockName) && !_selectedBlockNames.Contains(blockName))
-            {
                 _selectedBlockNames.Add(blockName);
-            }
         }
 
         private SortEngine.SortType GetSelectedSortType()
@@ -1571,39 +1182,12 @@ namespace BlockCatalogPlugin.UI
             return SortEngine.SortType.SelectionOrder;
         }
 
-        #endregion
-
-        #region Helpers
-
-        private Button CreateFlatButton(string text, int width, Color? bgColor = null)
-        {
-            var btn = new Button
-            {
-                Text = text,
-                Width = width,
-                Height = 26,
-                BackColor = bgColor ?? Theme.Card,
-                ForeColor = Theme.Text,
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand,
-                Font = new Font("Microsoft YaHei UI", 8F)
-            };
-            btn.FlatAppearance.BorderSize = 0;
-            return btn;
-        }
-
-        /// <summary>
-        /// Thread-safe invoke
-        /// </summary>
         public void SafeInvoke(Action action)
         {
-            if (InvokeRequired) Invoke(action);
+            if (InvokeRequired) BeginInvoke(action);
             else action();
         }
 
-        /// <summary>
-        /// Append log message with timestamp
-        /// </summary>
         public void AppendLog(string message, Color color)
         {
             if (rtbLog == null) return;
@@ -1615,56 +1199,32 @@ namespace BlockCatalogPlugin.UI
             rtbLog.ScrollToCaret();
         }
 
-        /// <summary>
-        /// Get current style configuration
-        /// </summary>
-        public CatalogStyle GetCurrentStyle()
-        {
-            return _currentStyle;
-        }
+        public CatalogStyle GetCurrentStyle() => _currentStyle;
+        public int GetBlockCount() => _currentResult?.Blocks?.Count ?? 0;
 
-        /// <summary>
-        /// Get current block count
-        /// </summary>
-        public int GetBlockCount()
-        {
-            return _currentResult?.Blocks?.Count ?? 0;
-        }
-
-        /// <summary>
-        /// Get current block data result (for InsertPointCommand)
-        /// </summary>
         public BlockDataResult GetCurrentBlockData()
         {
             if (_currentResult == null) return null;
-
-            // Convert ExtractionResult to BlockDataResult
             var result = new BlockDataResult
             {
                 AllTags = _currentResult.AllTags,
                 BlockNames = _currentResult.Blocks.Select(b => b.BlockName).Distinct().ToList(),
                 LayerNames = new List<string>()
             };
-
-            // Convert AttributeBlockData to BlockData
             foreach (var attrBlock in _currentResult.Blocks)
             {
-                var blockData = new BlockData
+                result.Blocks.Add(new BlockData
                 {
                     BlockName = attrBlock.BlockName,
                     ObjectId = attrBlock.BlockId,
-                    Attributes = attrBlock.Attributes?.Select(kv => new BlockAttribute { Tag = kv.Key, Value = kv.Value }).ToList()
+                    Attributes = attrBlock.Attributes?
+                        .Select(kv => new BlockAttribute { Tag = kv.Key, Value = kv.Value }).ToList()
                         ?? new List<BlockAttribute>()
-                };
-                result.Blocks.Add(blockData);
+                });
             }
-
             return result;
         }
 
-        /// <summary>
-        /// Get current merge configuration
-        /// </summary>
         public MergeConfig GetCurrentMergeConfig()
         {
             return new MergeConfig
@@ -1676,17 +1236,11 @@ namespace BlockCatalogPlugin.UI
             };
         }
 
-        /// <summary>
-        /// Get layout radio button state
-        /// </summary>
         public bool GetLayoutRadioState()
         {
             return radLayout != null && radLayout.Checked;
         }
 
-        /// <summary>
-        /// Direct generate (for command callback)
-        /// </summary>
         public void DoGenerateCatalogDirect()
         {
             if (_currentResult == null || _currentResult.Blocks.Count == 0)
@@ -1697,7 +1251,6 @@ namespace BlockCatalogPlugin.UI
 
             try
             {
-                // 获取当前筛选范围
                 string selectedFilter = cmbBlockNameFilter?.SelectedItem?.ToString() ?? "(全部)";
                 var targetBlocks = (selectedFilter != "(全部)")
                     ? _currentResult.Blocks.Where(b => b.BlockName == selectedFilter).ToList()
@@ -1709,43 +1262,35 @@ namespace BlockCatalogPlugin.UI
                     return;
                 }
 
-                // 根据排序模式获取排序后的数据（含容差和反序参数）
                 var sortType = GetSelectedSortType();
                 var sortedBlocks = _sortEngine.Sort(targetBlocks, sortType, 500.0, chkReverse.Checked);
 
                 string targetLayout = null;
                 if (radLayout.Checked && cmbLayoutName.SelectedItem != null)
-                {
                     targetLayout = cmbLayoutName.SelectedItem.ToString();
-                }
 
-                // 将排序后的 AttributeBlockData 转换为 BlockDataResult
                 var blockDataResult = new BlockDataResult();
                 foreach (var attrBlock in sortedBlocks)
                 {
-                    var blockData = new BlockData
+                    blockDataResult.Blocks.Add(new BlockData
                     {
                         BlockName = attrBlock.BlockName,
                         ObjectId = attrBlock.BlockId,
-                        Attributes = attrBlock.Attributes?.Select(kv => new BlockAttribute { Tag = kv.Key, Value = kv.Value }).ToList()
+                        Attributes = attrBlock.Attributes?
+                            .Select(kv => new BlockAttribute { Tag = kv.Key, Value = kv.Value }).ToList()
                             ?? new List<BlockAttribute>()
-                    };
-                    blockDataResult.Blocks.Add(blockData);
+                    });
                 }
 
                 var pos = Plugin._pendingInsertPoint ?? new Point3d(0, 0, 0);
-
-                // 调用真正的 Generate 方法生成带网格线的目录实体
                 var entities = _generator.Generate(blockDataResult, _currentStyle, pos, targetLayout);
 
-                // 将实体写入 CAD 图纸数据库
-                var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+                var doc = Application.DocumentManager.MdiActiveDocument;
                 if (doc != null)
                 {
                     using (var docLock = doc.LockDocument())
                     using (var tr = doc.Database.TransactionManager.StartTransaction())
                     {
-                        // 获取目标空间（模型空间或布局）
                         BlockTableRecord ms;
                         if (!string.IsNullOrEmpty(targetLayout))
                         {
@@ -1758,7 +1303,6 @@ namespace BlockCatalogPlugin.UI
                             ms = (BlockTableRecord)tr.GetObject(doc.Database.CurrentSpaceId, OpenMode.ForWrite);
                         }
 
-                        // 将所有生成的实体添加到图纸
                         foreach (var entity in entities)
                         {
                             ms.AppendEntity(entity);
@@ -1776,7 +1320,5 @@ namespace BlockCatalogPlugin.UI
                 AppendLog($"生成失败: {ex.Message}", Theme.Error);
             }
         }
-
-        #endregion
     }
 }

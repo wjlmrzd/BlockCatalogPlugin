@@ -60,8 +60,7 @@ namespace BlockCatalogPlugin
                                | PaletteSetStyles.Snappable,
                         DockEnabled = DockSides.Left | DockSides.Right | DockSides.None,
                         Dock = DockSides.Right,
-                        MinimumSize = new System.Drawing.Size(420, 600),
-                        KeepFocus = true
+                        MinimumSize = new System.Drawing.Size(340, 600)
                     };
                     _panel = new BlockCatalogPanel();
                     _ps.Add("目录生成", _panel);
@@ -150,9 +149,16 @@ namespace BlockCatalogPlugin
 
             if (pr.Status == PromptStatus.OK && pr.Value != null)
             {
-                var extractor = new BlockExtractor();
-                var result = extractor.ExtractFromSelection(pr.Value);
-                Plugin._panel.SafeInvoke(() => Plugin._panel.OnBlocksSelected(result));
+                try
+                {
+                    var extractor = new BlockExtractor();
+                    var result = extractor.ExtractFromSelection(pr.Value);
+                    Plugin._panel.SafeInvoke(() => Plugin._panel.OnBlocksSelected(result));
+                }
+                catch (System.Exception ex)
+                {
+                    ed.WriteMessage($"\n提取属性块失败: {ex.Message}");
+                }
             }
             else
             {
