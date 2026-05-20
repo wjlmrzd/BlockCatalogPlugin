@@ -34,26 +34,20 @@ namespace BlockCatalogPlugin
 
             TemplateManager.Instance.CreatePresetTemplates();
 
-            // 注册文档打开事件，在文档激活后注册快捷键
+            // 注册文档打开事件，在文档激活后注册快捷键（仅在UI需要时调用，不在启动时自动注册）
             Application.DocumentManager.DocumentActivated += OnDocumentActivated;
 
             Editor ed = Application.DocumentManager.MdiActiveDocument?.Editor;
             string shortcut = PreferencesManager.Instance.Preferences.ShortcutKey ?? "bca";
             ed?.WriteMessage($"\n✔ 目录生成插件 V2.0 已加载 | 命令: BLOCKCATALOG | 快捷键: {shortcut}");
-
-            // 如果有活动文档，立即注册快捷键
-            if (Application.DocumentManager.MdiActiveDocument != null)
-            {
-                RegisterShortcutKey();
-            }
         }
 
         /// <summary>
-        /// 文档激活时注册快捷键
+        /// 文档激活时处理（不再自动注册快捷键，避免干扰选择操作）
         /// </summary>
         private static void OnDocumentActivated(object sender, DocumentCollectionEventArgs e)
         {
-            RegisterShortcutKey();
+            // 不再自动注册快捷键，只在用户明确修改时调用 RegisterShortcutKey()
         }
 
         /// <summary>
