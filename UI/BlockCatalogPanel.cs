@@ -1013,7 +1013,7 @@ namespace BlockCatalogPlugin.UI
                 幅面 = b.GetAttribute("FM") ?? "",
                 X = Math.Round(b.Position.X, 1),
                 Y = Math.Round(b.Position.Y, 1),
-                当前提取值 = b.GetAttribute("XH") ?? "",
+                当前提取值 = b.GetAttribute("XH") ?? b.GetAttribute("TH") ?? "",
                 重编预览值 = idx < previewValues.Count ? previewValues[idx] : ""
             }).ToList();
 
@@ -1096,25 +1096,17 @@ namespace BlockCatalogPlugin.UI
 
             if (targetIndex < 0 || _dragRowIndex < 0 || targetIndex == _dragRowIndex) return;
 
-            // 标准 RemoveAt/Insert 插队逻辑
+            // 标准 RemoveAt/Insert 插队逻辑（去掉错误的-1修正）
             var draggedBlock = _currentResult.Blocks[_dragRowIndex];
             _currentResult.Blocks.RemoveAt(_dragRowIndex);
-
-            // 修正 targetIndex：如果移除位置在目标位置之前，目标位置需要-1
-            int insertIndex = targetIndex;
-            if (_dragRowIndex < targetIndex)
-            {
-                insertIndex = targetIndex - 1;
-            }
-
-            _currentResult.Blocks.Insert(insertIndex, draggedBlock);
+            _currentResult.Blocks.Insert(targetIndex, draggedBlock);
 
             RefreshDataGridView();
 
             // 选中新位置的行
-            if (insertIndex >= 0 && insertIndex < dgvBlocks.Rows.Count)
+            if (targetIndex >= 0 && targetIndex < dgvBlocks.Rows.Count)
             {
-                dgvBlocks.Rows[insertIndex].Selected = true;
+                dgvBlocks.Rows[targetIndex].Selected = true;
             }
 
             _dragRowIndex = -1;

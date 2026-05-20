@@ -78,41 +78,39 @@ namespace BlockCatalogPlugin
             // Step 1: 先按 Y 从大到小排序
             var sortedByY = blocks.OrderByDescending(b => b.Position.Y).ToList();
 
-            // Step 2: 动态冒泡分组，组内按 X 排序
+            // Step 2: 动态冒泡分组，组内按 X 排序（使用 rowBaseY 防止链条漂移）
             var result = new List<AttributeBlockData>();
             var currentRow = new List<AttributeBlockData>();
-            double? lastY = null;
+            double? rowBaseY = null; // 锁定行基准，防止链条漂移
 
             for (int i = 0; i < sortedByY.Count; i++)
             {
                 var block = sortedByY[i];
 
-                if (lastY.HasValue)
+                if (!rowBaseY.HasValue)
                 {
-                    double yDiff = Math.Abs(block.Position.Y - lastY.Value);
+                    rowBaseY = block.Position.Y;
+                }
+                else
+                {
+                    // 严格与本行的起始基准 Y 进行比对
+                    double yDiff = Math.Abs(block.Position.Y - rowBaseY.Value);
                     if (yDiff >= tolerance)
                     {
                         // Y 差超过容差，开启新行
-                        // 将当前行的块按 X 排序后加入结果
-                        foreach (var b in currentRow.OrderBy(x => x.Position.X))
-                        {
-                            result.Add(b);
-                        }
+                        result.AddRange(currentRow.OrderBy(x => x.Position.X));
                         currentRow.Clear();
+                        rowBaseY = block.Position.Y; // 换行，重置基准 Y
                     }
                 }
 
                 currentRow.Add(block);
-                lastY = block.Position.Y;
             }
 
             // 处理最后一行
             if (currentRow.Count > 0)
             {
-                foreach (var b in currentRow.OrderBy(x => x.Position.X))
-                {
-                    result.Add(b);
-                }
+                result.AddRange(currentRow.OrderBy(x => x.Position.X));
             }
 
             return result;
@@ -129,41 +127,39 @@ namespace BlockCatalogPlugin
             // Step 1: 先按 X 从小到大排序
             var sortedByX = blocks.OrderBy(b => b.Position.X).ToList();
 
-            // Step 2: 动态冒泡分组，组内按 Y 排序
+            // Step 2: 动态冒泡分组，组内按 Y 排序（使用 colBaseX 防止链条漂移）
             var result = new List<AttributeBlockData>();
             var currentCol = new List<AttributeBlockData>();
-            double? lastX = null;
+            double? colBaseX = null; // 锁定列基准，防止链条漂移
 
             for (int i = 0; i < sortedByX.Count; i++)
             {
                 var block = sortedByX[i];
 
-                if (lastX.HasValue)
+                if (!colBaseX.HasValue)
                 {
-                    double xDiff = Math.Abs(block.Position.X - lastX.Value);
+                    colBaseX = block.Position.X;
+                }
+                else
+                {
+                    // 严格与本列的起始基准 X 进行比对
+                    double xDiff = Math.Abs(block.Position.X - colBaseX.Value);
                     if (xDiff >= tolerance)
                     {
                         // X 差超过容差，开启新列
-                        // 将当前列的块按 Y 排序后加入结果
-                        foreach (var b in currentCol.OrderByDescending(y => y.Position.Y))
-                        {
-                            result.Add(b);
-                        }
+                        result.AddRange(currentCol.OrderByDescending(y => y.Position.Y));
                         currentCol.Clear();
+                        colBaseX = block.Position.X; // 换列，重置基准 X
                     }
                 }
 
                 currentCol.Add(block);
-                lastX = block.Position.X;
             }
 
             // 处理最后一列
             if (currentCol.Count > 0)
             {
-                foreach (var b in currentCol.OrderByDescending(y => y.Position.Y))
-                {
-                    result.Add(b);
-                }
+                result.AddRange(currentCol.OrderByDescending(y => y.Position.Y));
             }
 
             return result;
