@@ -572,14 +572,6 @@ namespace BlockCatalogPlugin
         }
 
         /// <summary>
-        /// 从AttributeBlockData获取属性值（兼容旧API）
-        /// </summary>
-        private string GetAttributeBlockAttribute(AttributeBlockData block, string tag)
-        {
-            return block?.GetAttribute(tag) ?? "";
-        }
-
-        /// <summary>
         /// 多标签查找 - 尝试多个标签名，返回第一个找到的非空值
         /// 支持中英文标签别名映射
         /// </summary>
