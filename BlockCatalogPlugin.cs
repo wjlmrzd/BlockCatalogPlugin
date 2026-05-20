@@ -34,12 +34,26 @@ namespace BlockCatalogPlugin
 
             TemplateManager.Instance.CreatePresetTemplates();
 
-            // 注册快捷键别名
-            RegisterShortcutKey();
+            // 注册文档打开事件，在文档激活后注册快捷键
+            Application.DocumentManager.DocumentActivated += OnDocumentActivated;
 
             Editor ed = Application.DocumentManager.MdiActiveDocument?.Editor;
             string shortcut = PreferencesManager.Instance.Preferences.ShortcutKey ?? "bca";
             ed?.WriteMessage($"\n✔ 目录生成插件 V2.0 已加载 | 命令: BLOCKCATALOG | 快捷键: {shortcut}");
+
+            // 如果有活动文档，立即注册快捷键
+            if (Application.DocumentManager.MdiActiveDocument != null)
+            {
+                RegisterShortcutKey();
+            }
+        }
+
+        /// <summary>
+        /// 文档激活时注册快捷键
+        /// </summary>
+        private static void OnDocumentActivated(object sender, DocumentCollectionEventArgs e)
+        {
+            RegisterShortcutKey();
         }
 
         /// <summary>
@@ -59,15 +73,13 @@ namespace BlockCatalogPlugin
                 var doc = Application.DocumentManager.MdiActiveDocument;
                 if (doc == null) return;
 
-                // 删除旧别名（如果有）并添加新别名
-                // 使用 -alias 命令：-alias delete <shortcut> | -alias add <shortcut> *BLOCKCATALOG
+                // 使用 -alias 命令注册别名
+                // 先删除可能存在的旧别名，再添加新别名
                 string deleteCmd = $"-alias delete {shortcut} ";
                 string addCmd = $"-alias add {shortcut} *BLOCKCATALOG ";
 
                 doc.SendStringToExecute(deleteCmd, true, false, true);
                 doc.SendStringToExecute(addCmd, true, false, true);
-
-                doc.Editor.WriteMessage($"\n快捷键别名 '{shortcut}' 已注册到 BLOCKCATALOG");
             }
             catch (System.Exception ex)
             {
@@ -459,6 +471,34 @@ namespace BlockCatalogPlugin
             style.UseMouseDefineSize = true;
             Plugin._panel.AppendLog("请在CAD中拖拽定义表格尺寸...", BlockCatalogPlugin.UI.Theme.Primary);
             doc.SendStringToExecute("_BCGENPOS ", true, false, true);
+        }
+
+        /// <summary>
+        /// 拖拽获取列宽命令
+        /// </summary>
+        [CommandMethod("_BCPICKCOLWIDTH", CommandFlags.Modal)]
+        public void BcPickColWidth()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null || Plugin._panel == null) return;
+
+            var ed = doc.Editor;
+            var opt = new PromptCornerOptions("\n拖拽到右下角定义列宽：", Plugin._pendingInsertPoint ?? new Point3d(0, 0, 0));
+            opt.AllowNone = true;
+
+            var result = ed.GetCorner(opt);
+            if (result.Status == PromptStatus.OK)
+            {
+                var startPoint = Plugin._pendingInsertPoint ?? new Point3d(0, 0, 0);
+                double width = Math.Abs(result.Value.X - startPoint.X);
+
+                // 将宽度应用到当前选中的列
+                Plugin._panel.SafeInvoke(() => Plugin._panel.ApplyPickedColumnWidth(width));
+            }
+            else
+            {
+                Plugin._panel.SafeInvoke(() => Plugin._panel.AppendLog("取消获取列宽", BlockCatalogPlugin.UI.Theme.TextDim));
+            }
         }
     }
 }

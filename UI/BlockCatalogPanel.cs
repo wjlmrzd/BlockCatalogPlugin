@@ -88,10 +88,13 @@ namespace BlockCatalogPlugin.UI
         private bool _isUpdatingFilter = false;
         private double _sortTolerance = 500.0; // 排序容差，默认500
         private CheckBox chkMergeSameName; // 合并相同前缀的图名/图号
+        private ListBox lstColumns; // 列管理列表框
+        private ComboBox cmbAddColumn; // 添加列下拉框
 
         // 列宽/行高拖拽相关
         private bool _isResizingColumn = false;
         private bool _isResizingRow = false;
+        private bool _isPickingColumnWidth = false; // 是否处于拖拽获取列宽模式
 
         public BlockCatalogPanel()
         {
@@ -536,47 +539,139 @@ namespace BlockCatalogPlugin.UI
             {
                 Text = "列宽表达式与表格参数",
                 Location = new Point(leftX, curY),
-                Size = new Size(boxW, 145),
+                Size = new Size(boxW, 215),  // 增大高度以容纳列管理控件
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
                 FlatStyle = FlatStyle.Flat
             };
 
-            var lblForm = new Label { Text = "公式:", Location = new Point(12, 22), AutoSize = true, ForeColor = Theme.TextDim };
+            // === 子区域：列管理 ===
+            var lblColMgr = new Label { Text = "列管理:", Location = new Point(12, 18), AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F, FontStyle.Bold) };
+            grpFormula.Controls.Add(lblColMgr);
+
+            // 列选择下拉框（用于添加新列，使用字段引用）
+            cmbAddColumn = new ComboBox
+            {
+                Location = new Point(12, 38),
+                Width = 100,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text
+            };
+            cmbAddColumn.Items.Add("XH-图号");
+            cmbAddColumn.Items.Add("TH-图号");
+            cmbAddColumn.Items.Add("TM-图名");
+            cmbAddColumn.Items.Add("BL-比例");
+            cmbAddColumn.Items.Add("DH-图别");
+            cmbAddColumn.Items.Add("JZ-建筑");
+            cmbAddColumn.Items.Add("GC-工程");
+            cmbAddColumn.SelectedIndex = 0;
+            grpFormula.Controls.Add(cmbAddColumn);
+
+            var btnAddColumn = CreateFlatButton("增加列", 120, 36, 55, Theme.Success);
+            btnAddColumn.Height = 20;
+            btnAddColumn.Click += (s, e) =>
+            {
+                if (cmbAddColumn.SelectedItem != null)
+                {
+                    string selected = cmbAddColumn.SelectedItem.ToString();
+                    string[] parts = selected.Split('-');
+                    string tag = parts[0];
+                    string header = parts.Length > 1 ? parts[1] : tag;
+                    AddColumn(tag, header);
+                }
+            };
+            grpFormula.Controls.Add(btnAddColumn);
+
+            var btnRemoveColumn = CreateFlatButton("删除列", 180, 36, 55, Theme.Warning);
+            btnRemoveColumn.Height = 20;
+            btnRemoveColumn.Click += (s, e) => RemoveSelectedColumn();
+            grpFormula.Controls.Add(btnRemoveColumn);
+
+            var btnColUp = CreateFlatButton("▲", 240, 36, 28, Theme.Primary);
+            btnColUp.Height = 20;
+            btnColUp.Click += (s, e) => MoveColumnUp();
+            grpFormula.Controls.Add(btnColUp);
+
+            var btnColDown = CreateFlatButton("▼", 270, 36, 28, Theme.Primary);
+            btnColDown.Height = 20;
+            btnColDown.Click += (s, e) => MoveColumnDown();
+            grpFormula.Controls.Add(btnColDown);
+
+            // 当前列 ListBox（使用字段引用）
+            lstColumns = new ListBox
+            {
+                Location = new Point(12, 60),
+                Size = new Size(290, 55),
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text,
+                Font = new Font("Consolas", 8F),
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            lstColumns.SelectedIndexChanged += (s, e) => { /* 可选中列进行操作 */ };
+            grpFormula.Controls.Add(lstColumns);
+
+            // === 分隔线 ===
+            var sepLine = new Panel { Location = new Point(12, 120), Size = new Size(290, 1), BackColor = Theme.Border };
+            grpFormula.Controls.Add(sepLine);
+
+            // === 子区域：列宽与行高 ===
+            var lblForm = new Label { Text = "列宽公式:", Location = new Point(12, 128), AutoSize = true, ForeColor = Theme.TextDim };
+            grpFormula.Controls.Add(lblForm);
+
             txtColumnFormula = new TextBox
             {
-                Location = new Point(50, 19),
-                Width = 150,
+                Location = new Point(62, 126),
+                Width = 130,
                 BackColor = Theme.InputBg,
                 ForeColor = Theme.Text,
                 BorderStyle = BorderStyle.FixedSingle,
                 Font = new Font("Consolas", 8.5F),
                 Text = "20+40+60"
             };
-            var btnApplyForm = CreateFlatButton("应用", 210, 18, 42, Theme.Primary);
-            btnApplyForm.Height = 20;
+            grpFormula.Controls.Add(txtColumnFormula);
+
+            var btnApplyForm = CreateFlatButton("应用", 198, 124, 40, Theme.Primary);
+            btnApplyForm.Height = 18;
             btnApplyForm.Click += (s, e) => ApplyColumnFormula();
-            var btnGetForm = CreateFlatButton("获取", 256, 18, 42, Theme.Accent);
-            btnGetForm.Height = 20;
+            grpFormula.Controls.Add(btnApplyForm);
+
+            var btnGetForm = CreateFlatButton("获取", 242, 124, 40, Theme.Accent);
+            btnGetForm.Height = 18;
             btnGetForm.Click += (s, e) => txtColumnFormula.Text = _currentStyle.GetFormulaWidths();
+            grpFormula.Controls.Add(btnGetForm);
 
-            grpFormula.Controls.AddRange(new Control[] { lblForm, txtColumnFormula, btnApplyForm, btnGetForm });
+            var btnPickColWidth = CreateFlatButton("拖拽获取列宽", 286, 124, 62, Theme.AccentLight);
+            btnPickColWidth.Height = 18;
+            btnPickColWidth.Click += (s, e) => StartPickColumnWidthMode();
+            grpFormula.Controls.Add(btnPickColWidth);
 
-            var lblFontH = new Label { Text = "字高", Location = new Point(12, 48), AutoSize = true, ForeColor = Theme.TextDim };
-            numFontHeight = new NumericUpDown { Location = new Point(45, 46), Width = 45, Minimum = 1, Maximum = 20, Value = 3.5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
-            var lblRowH = new Label { Text = "行高", Location = new Point(100, 48), AutoSize = true, ForeColor = Theme.TextDim };
-            numRowHeight = new NumericUpDown { Location = new Point(132, 46), Width = 45, Minimum = 1, Maximum = 50, Value = 5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
-            chkShowHeader = new CheckBox { Text = "绘表头", Location = new Point(190, 47), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            // 字高和行高
+            var lblFontH = new Label { Text = "字高", Location = new Point(12, 150), AutoSize = true, ForeColor = Theme.TextDim };
+            grpFormula.Controls.Add(lblFontH);
+            numFontHeight = new NumericUpDown { Location = new Point(45, 148), Width = 45, Minimum = 1, Maximum = 20, Value = 3.5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
+            grpFormula.Controls.Add(numFontHeight);
 
-            grpFormula.Controls.AddRange(new Control[] { lblFontH, numFontHeight, lblRowH, numRowHeight, chkShowHeader });
+            var lblRowH = new Label { Text = "行高", Location = new Point(100, 150), AutoSize = true, ForeColor = Theme.TextDim };
+            grpFormula.Controls.Add(lblRowH);
+            numRowHeight = new NumericUpDown { Location = new Point(132, 148), Width = 45, Minimum = 1, Maximum = 50, Value = 5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
+            grpFormula.Controls.Add(numRowHeight);
 
-            var lblOut = new Label { Text = "目标空间", Location = new Point(12, 76), AutoSize = true, ForeColor = Theme.TextDim };
-            radModelSpace = new RadioButton { Text = "模型", Location = new Point(70, 74), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
-            radLayout = new RadioButton { Text = "布局", Location = new Point(125, 74), AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            chkShowHeader = new CheckBox { Text = "表头", Location = new Point(185, 149), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            grpFormula.Controls.Add(chkShowHeader);
+
+            // 目标空间
+            var lblOut = new Label { Text = "目标:", Location = new Point(12, 175), AutoSize = true, ForeColor = Theme.TextDim };
+            grpFormula.Controls.Add(lblOut);
+            radModelSpace = new RadioButton { Text = "模型", Location = new Point(48, 173), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            grpFormula.Controls.Add(radModelSpace);
+            radLayout = new RadioButton { Text = "布局", Location = new Point(90, 173), AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            grpFormula.Controls.Add(radLayout);
             cmbLayoutName = new ComboBox
             {
-                Location = new Point(180, 73),
-                Width = 75,
+                Location = new Point(125, 171),
+                Width = 70,
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 FlatStyle = FlatStyle.Flat,
                 Enabled = false,
@@ -586,13 +681,11 @@ namespace BlockCatalogPlugin.UI
             cmbLayoutName.Items.Add("Model");
             cmbLayoutName.SelectedIndex = 0;
             radLayout.CheckedChanged += (s, e) => { cmbLayoutName.Enabled = radLayout.Checked; };
-
-            grpFormula.Controls.AddRange(new Control[] { lblOut, radModelSpace, radLayout, cmbLayoutName });
+            grpFormula.Controls.Add(cmbLayoutName);
 
             // 鼠标拖拽定义尺寸按钮
-            var btnPickDimSize = CreateFlatButton("鼠标拖拽定义行列高", 140, Theme.Primary);
-            btnPickDimSize.Location = new Point(12, 100);
-            btnPickDimSize.Height = 24;
+            var btnPickDimSize = CreateFlatButton("拖拽获取尺寸", 200, 169, 70, Theme.Primary);
+            btnPickDimSize.Height = 20;
             btnPickDimSize.Click += (s, e) =>
             {
                 var style = GetCurrentStyle();
@@ -603,7 +696,7 @@ namespace BlockCatalogPlugin.UI
             grpFormula.Controls.Add(btnPickDimSize);
 
             _canvasPanel.Controls.Add(grpFormula);
-            curY += 155;
+            curY += 225;
 
             // === 间距公式 ===
             var lblSpace = new Label { Text = "间距公式:", Location = new Point(leftX + 6, curY + 4), AutoSize = true, ForeColor = Theme.TextDim };
@@ -1061,6 +1154,143 @@ namespace BlockCatalogPlugin.UI
                 dgvBlocks.AutoResizeColumns(DataGridViewAutoSizeColumnsMode.DisplayedCells);
             }
         }
+
+        #region 列管理方法
+
+        /// <summary>
+        /// 添加新列
+        /// </summary>
+        private void AddColumn(string tag, string header)
+        {
+            if (string.IsNullOrEmpty(tag)) return;
+
+            // 检查是否已存在
+            if (_currentStyle.Columns.Any(c => c.Tag.Equals(tag, StringComparison.OrdinalIgnoreCase)))
+            {
+                AppendLog($"列 '{header}' 已存在", Theme.Warning);
+                return;
+            }
+
+            int newOrder = _currentStyle.Columns.Count;
+            _currentStyle.Columns.Add(new ColumnDef
+            {
+                Tag = tag.ToUpperInvariant(),
+                Header = header,
+                Width = 40,
+                Visible = true,
+                Order = newOrder
+            });
+
+            RefreshColumnsList();
+            UpdateColumnFormula();
+            AppendLog($"已添加列: {header}", Theme.Success);
+        }
+
+        /// <summary>
+        /// 删除选中的列
+        /// </summary>
+        private void RemoveSelectedColumn()
+        {
+            if (lstColumns == null || _currentStyle == null) return;
+
+            if (lstColumns.SelectedIndex < 0)
+            {
+                AppendLog("请先选择要删除的列", Theme.Warning);
+                return;
+            }
+
+            int idx = lstColumns.SelectedIndex;
+            var visibleCols = _currentStyle.Columns.Where(c => c.Visible).OrderBy(c => c.Order).ToList();
+            if (idx >= 0 && idx < visibleCols.Count)
+            {
+                var colToRemove = visibleCols[idx];
+                _currentStyle.Columns.Remove(colToRemove);
+                RefreshColumnsList();
+                UpdateColumnFormula();
+                AppendLog($"已删除列: {colToRemove.Header}", Theme.Warning);
+            }
+        }
+
+        /// <summary>
+        /// 上移选中列
+        /// </summary>
+        private void MoveColumnUp()
+        {
+            if (lstColumns == null || _currentStyle == null) return;
+            if (lstColumns.SelectedIndex <= 0) return;
+
+            int idx = lstColumns.SelectedIndex;
+            var visibleCols = _currentStyle.Columns.Where(c => c.Visible).OrderBy(c => c.Order).ToList();
+            if (idx > 0 && idx < visibleCols.Count)
+            {
+                // 交换顺序
+                int orderIdx1 = visibleCols[idx].Order;
+                int orderIdx2 = visibleCols[idx - 1].Order;
+                visibleCols[idx].Order = orderIdx2;
+                visibleCols[idx - 1].Order = orderIdx1;
+
+                RefreshColumnsList();
+                UpdateColumnFormula();
+                lstColumns.SelectedIndex = idx - 1;
+            }
+        }
+
+        /// <summary>
+        /// 下移选中列
+        /// </summary>
+        private void MoveColumnDown()
+        {
+            if (lstColumns == null || _currentStyle == null) return;
+            int idx = lstColumns.SelectedIndex;
+            var visibleCols = _currentStyle.Columns.Where(c => c.Visible).OrderBy(c => c.Order).ToList();
+            if (idx < 0 || idx >= visibleCols.Count - 1) return;
+
+            // 交换顺序
+            int orderIdx1 = visibleCols[idx].Order;
+            int orderIdx2 = visibleCols[idx + 1].Order;
+            visibleCols[idx].Order = orderIdx2;
+            visibleCols[idx + 1].Order = orderIdx1;
+
+            RefreshColumnsList();
+            UpdateColumnFormula();
+            lstColumns.SelectedIndex = idx + 1;
+        }
+
+        /// <summary>
+        /// 刷新列列表显示
+        /// </summary>
+        private void RefreshColumnsList()
+        {
+            if (lstColumns == null || _currentStyle == null) return;
+
+            lstColumns.Items.Clear();
+            var visibleCols = _currentStyle.Columns.Where(c => c.Visible).OrderBy(c => c.Order).ToList();
+            foreach (var col in visibleCols)
+            {
+                lstColumns.Items.Add($"[{col.Width:F0}]{col.Header}({col.Tag})");
+            }
+        }
+
+        /// <summary>
+        /// 更新列宽公式
+        /// </summary>
+        private void UpdateColumnFormula()
+        {
+            if (_currentStyle == null) return;
+            txtColumnFormula.Text = _currentStyle.GetFormulaWidths();
+        }
+
+        /// <summary>
+        /// 开始拖拽获取列宽模式
+        /// </summary>
+        private void StartPickColumnWidthMode()
+        {
+            _isPickingColumnWidth = true;
+            AppendLog("请在CAD中框选两个点来获取列宽...", Theme.Primary);
+            ExecuteCommand("_BCPICKCOLWIDTH");
+        }
+
+        #endregion
 
         private void RefreshBlockNameFilter()
         {
