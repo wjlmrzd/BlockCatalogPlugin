@@ -1407,12 +1407,17 @@ namespace BlockCatalogPlugin.UI
 
             if (targetIndex < 0 || _dragRowIndex < 0 || targetIndex == _dragRowIndex) return;
 
-            var draggedBlock = _currentResult.Blocks[_dragRowIndex];
-            _currentResult.Blocks.RemoveAt(_dragRowIndex);
+            // 使用 BlockRowData 中保存的原始索引来获取正确的块
+            int originalIdx = _dragRowIndex < _currentBlockRows.Count ? _currentBlockRows[_dragRowIndex].OriginalIndex : _dragRowIndex;
+            if (originalIdx < 0 || originalIdx >= _currentResult.Blocks.Count) return;
+
+            var draggedBlock = _currentResult.Blocks[originalIdx];
+            _currentResult.Blocks.RemoveAt(originalIdx);
             _currentResult.Blocks.Insert(targetIndex, draggedBlock);
 
             RefreshDataGridView();
 
+            // 选中移动后的行（因为 RefreshDataGridView 会重建控件，所以直接选 targetIndex）
             if (targetIndex >= 0 && targetIndex < dgvBlocks.Rows.Count)
                 dgvBlocks.Rows[targetIndex].Selected = true;
 
