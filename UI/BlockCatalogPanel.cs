@@ -923,6 +923,20 @@ namespace BlockCatalogPlugin.UI
         }
 
         /// <summary>
+        /// 动态识别当前图纸中的有效图号标签（TH > 图号 > XH）
+        /// </summary>
+        private string GetActiveTag()
+        {
+            if (_currentResult != null && _currentResult.Blocks.Count > 0)
+            {
+                var firstBlock = _currentResult.Blocks[0];
+                if (firstBlock.GetAttribute("TH") != null) return "TH";
+                if (firstBlock.GetAttribute("图号") != null) return "图号";
+            }
+            return "XH"; // 缺省默认
+        }
+
+        /// <summary>
         /// 面板设置数据结构（用于导入/导出）
         /// </summary>
         private class PanelSettings
@@ -1134,6 +1148,18 @@ namespace BlockCatalogPlugin.UI
                 return;
             }
 
+            // 获取当前筛选范围
+            string selectedFilter = cmbBlockNameFilter?.SelectedItem?.ToString() ?? "(全部)";
+            var targetBlocks = (selectedFilter != "(全部)")
+                ? _currentResult.Blocks.Where(b => b.BlockName == selectedFilter).ToList()
+                : _currentResult.Blocks;
+
+            if (targetBlocks.Count == 0)
+            {
+                AppendLog("筛选范围内没有可重编的数据", Theme.Warning);
+                return;
+            }
+
             if (!int.TryParse(txtSuffixStart.Text, out int startNum)) startNum = 1;
             if (!int.TryParse(txtSuffixLength.Text, out int numLength)) numLength = 2;
             string prefix = txtSuffixPrefix.Text ?? "";
@@ -1141,8 +1167,8 @@ namespace BlockCatalogPlugin.UI
 
             var engine = new BlockCatalogPlugin.SuffixPatternEngine();
             bool success = engine.BulkRenameAttributes(
-                _currentResult.Blocks,
-                "XH",
+                targetBlocks,
+                GetActiveTag(),
                 prefix,
                 suffix,
                 startNum,
@@ -1186,6 +1212,18 @@ namespace BlockCatalogPlugin.UI
                 return;
             }
 
+            // 获取当前筛选范围
+            string selectedFilter = cmbBlockNameFilter?.SelectedItem?.ToString() ?? "(全部)";
+            var targetBlocks = (selectedFilter != "(全部)")
+                ? _currentResult.Blocks.Where(b => b.BlockName == selectedFilter).ToList()
+                : _currentResult.Blocks;
+
+            if (targetBlocks.Count == 0)
+            {
+                AppendLog("筛选范围内没有可同步的数据", Theme.Warning);
+                return;
+            }
+
             if (!int.TryParse(txtSuffixStart.Text, out int startNum)) startNum = 1;
             if (!int.TryParse(txtSuffixLength.Text, out int numLength)) numLength = 2;
             string prefix = txtSuffixPrefix.Text ?? "";
@@ -1195,8 +1233,8 @@ namespace BlockCatalogPlugin.UI
 
             var engine = new SuffixPatternEngine();
             bool success = engine.BulkRenameAttributes(
-                _currentResult.Blocks,
-                "XH",
+                targetBlocks,
+                GetActiveTag(),
                 prefix,
                 suffix,
                 startNum,
@@ -1275,9 +1313,21 @@ namespace BlockCatalogPlugin.UI
 
             try
             {
+                // 获取当前筛选范围
+                string selectedFilter = cmbBlockNameFilter?.SelectedItem?.ToString() ?? "(全部)";
+                var targetBlocks = (selectedFilter != "(全部)")
+                    ? _currentResult.Blocks.Where(b => b.BlockName == selectedFilter).ToList()
+                    : _currentResult.Blocks;
+
+                if (targetBlocks.Count == 0)
+                {
+                    AppendLog("筛选范围内没有可生成的块数据", Theme.Warning);
+                    return;
+                }
+
                 // 根据排序模式获取排序后的数据（含容差和反序参数）
                 var sortType = GetSelectedSortType();
-                var sortedBlocks = _sortEngine.Sort(_currentResult.Blocks, sortType, 500.0, chkReverse.Checked);
+                var sortedBlocks = _sortEngine.Sort(targetBlocks, sortType, 500.0, chkReverse.Checked);
 
                 string targetLayout = null;
                 if (radLayout.Checked && cmbLayoutName.SelectedItem != null)
@@ -1492,9 +1542,21 @@ namespace BlockCatalogPlugin.UI
 
             try
             {
+                // 获取当前筛选范围
+                string selectedFilter = cmbBlockNameFilter?.SelectedItem?.ToString() ?? "(全部)";
+                var targetBlocks = (selectedFilter != "(全部)")
+                    ? _currentResult.Blocks.Where(b => b.BlockName == selectedFilter).ToList()
+                    : _currentResult.Blocks;
+
+                if (targetBlocks.Count == 0)
+                {
+                    AppendLog("筛选范围内没有可生成的块数据", Theme.Warning);
+                    return;
+                }
+
                 // 根据排序模式获取排序后的数据（含容差和反序参数）
                 var sortType = GetSelectedSortType();
-                var sortedBlocks = _sortEngine.Sort(_currentResult.Blocks, sortType, 500.0, chkReverse.Checked);
+                var sortedBlocks = _sortEngine.Sort(targetBlocks, sortType, 500.0, chkReverse.Checked);
 
                 string targetLayout = null;
                 if (radLayout.Checked && cmbLayoutName.SelectedItem != null)
