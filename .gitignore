@@ -1,0 +1,18 @@
+# Build outputs
+bin/
+obj/
+*.dll
+*.pdb
+*.cache
+*.lscache
+*.sourcelink.json
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# OS
+Thumbs.db
+*.bak
