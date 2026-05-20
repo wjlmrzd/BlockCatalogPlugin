@@ -151,6 +151,51 @@ namespace BlockCatalogPlugin
         }
 
         /// <summary>
+        /// 保存样式模板（含批量修改规则）
+        /// </summary>
+        public bool SaveTemplate(string name, CatalogStyle style, BatchModifyConfig batchConfig, List<ColumnWidthConfig> columnWidths = null)
+        {
+            if (string.IsNullOrEmpty(name) || style == null) return false;
+
+            try
+            {
+                EnsureTemplateDirectoryExists();
+                string safeName = GetSafeFileName(name);
+                string filePath = Path.Combine(TemplateDirectory, safeName + ".json");
+
+                var templateData = new StyleTemplateData
+                {
+                    Name = name,
+                    Description = $"创建于 {DateTime.Now:yyyy-MM-dd HH:mm}",
+                    Created = DateTime.Now,
+                    FontName = style.FontName,
+                    FontHeight = style.FontHeight,
+                    RowHeight = style.RowHeight,
+                    HeaderHeight = style.HeaderHeight,
+                    DrawBorder = style.DrawBorder,
+                    Columns = style.Columns,
+                    CustomColumnWidths = columnWidths ?? new List<ColumnWidthConfig>(),
+                    BatchModifyRules = batchConfig?.Rules ?? new List<AttributeRuleConfig>()
+                };
+
+                var options = new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    Converters = { new JsonStringEnumConverter() }
+                };
+
+                string json = JsonSerializer.Serialize(templateData, options);
+                File.WriteAllText(filePath, json);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"保存样式模板失败: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
         /// 模板是否存在
         /// </summary>
         public bool TemplateExists(string name)
@@ -258,6 +303,9 @@ namespace BlockCatalogPlugin
 
         // 自定义列宽（用户拖拽调整后的）
         public List<ColumnWidthConfig> CustomColumnWidths { get; set; } = new List<ColumnWidthConfig>();
+
+        // 批量修改规则配置（用于 BatchModifyDialog 模板保存/加载）
+        public List<AttributeRuleConfig> BatchModifyRules { get; set; } = new List<AttributeRuleConfig>();
     }
 
 }

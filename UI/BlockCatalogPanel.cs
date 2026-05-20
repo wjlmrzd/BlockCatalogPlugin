@@ -10,6 +10,8 @@ using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using BlockCatalogPlugin;
 using Font = System.Drawing.Font;
+using FlowLayoutPanel = System.Windows.Forms.FlowLayoutPanel;
+using FlowDirection = System.Windows.Forms.FlowDirection;
 
 namespace BlockCatalogPlugin.UI
 {
@@ -41,6 +43,7 @@ namespace BlockCatalogPlugin.UI
         private SortEngine _sortEngine = new SortEngine();
         private AttributeModifier _modifier = new AttributeModifier();
         private FrameSelector _frameSelector = new FrameSelector();
+        private SuffixPatternEngine _suffixEngine = new SuffixPatternEngine();
 
         private ExtractionResult _currentResult;
         private List<string> _selectedBlockNames = new List<string>();
@@ -272,168 +275,236 @@ namespace BlockCatalogPlugin.UI
         /// </summary>
         private Panel CreateControlPanel()
         {
-            var panel = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg, Padding = new Padding(4) };
-
-            int y = 8;
-            int leftMargin = 6;
+            var panel = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Theme.Bg,
+                Padding = new Padding(4),
+                ColumnCount = 1,
+                RowCount = 4
+            };
+            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
             // 工作模式 GroupBox
             var grpMode = new GroupBox
             {
                 Text = "工作模式",
-                Location = new Point(leftMargin, y),
-                Size = new Size(panel.Width - 12, 65),
+                Dock = DockStyle.Top,
+                Height = 70,
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
-                FlatStyle = FlatStyle.Flat
+                FlatStyle = FlatStyle.Flat,
+                Padding = new Padding(8, 16, 8, 8)
             };
 
             radCatalogMode = new RadioButton
             {
                 Text = "生成目录",
-                Location = new Point(10, 20),
+                Dock = DockStyle.Top,
                 AutoSize = true,
                 ForeColor = Theme.Text,
                 BackColor = Theme.Card,
-                Checked = true
+                Checked = true,
+                Padding = new Padding(0, 4, 0, 4)
             };
             grpMode.Controls.Add(radCatalogMode);
 
             radEditMode = new RadioButton
             {
                 Text = "更改图号",
-                Location = new Point(10, 42),
+                Dock = DockStyle.Top,
                 AutoSize = true,
                 ForeColor = Theme.Text,
-                BackColor = Theme.Card
+                BackColor = Theme.Card,
+                Padding = new Padding(0, 4, 0, 4)
             };
             grpMode.Controls.Add(radEditMode);
-            panel.Controls.Add(grpMode);
-            y += 72;
+            panel.Controls.Add(grpMode, 0, 0);
 
             // 排序模式 GroupBox
             var grpSort = new GroupBox
             {
                 Text = "排序模式",
-                Location = new Point(leftMargin, y),
-                Size = new Size(panel.Width - 12, 130),
+                Dock = DockStyle.Top,
+                Height = 140,
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
-                FlatStyle = FlatStyle.Flat
+                FlatStyle = FlatStyle.Flat,
+                Padding = new Padding(8, 16, 8, 8)
             };
 
             radSortLR_TB = new RadioButton
             {
                 Text = "左右 → 上下",
-                Location = new Point(10, 20),
+                Dock = DockStyle.Top,
                 AutoSize = true,
                 ForeColor = Theme.Text,
-                BackColor = Theme.Card
+                BackColor = Theme.Card,
+                Padding = new Padding(0, 4, 0, 4)
             };
             grpSort.Controls.Add(radSortLR_TB);
 
             radSortTB_LR = new RadioButton
             {
                 Text = "上下 → 左右",
-                Location = new Point(10, 42),
+                Dock = DockStyle.Top,
                 AutoSize = true,
                 ForeColor = Theme.Text,
                 BackColor = Theme.Card,
-                Checked = true
+                Checked = true,
+                Padding = new Padding(0, 4, 0, 4)
             };
             grpSort.Controls.Add(radSortTB_LR);
 
             radSortSelection = new RadioButton
             {
                 Text = "选择顺序",
-                Location = new Point(10, 64),
+                Dock = DockStyle.Top,
                 AutoSize = true,
                 ForeColor = Theme.Text,
-                BackColor = Theme.Card
+                BackColor = Theme.Card,
+                Padding = new Padding(0, 4, 0, 4)
             };
             grpSort.Controls.Add(radSortSelection);
 
             radSortNumeric = new RadioButton
             {
                 Text = "数值顺序",
-                Location = new Point(10, 86),
+                Dock = DockStyle.Top,
                 AutoSize = true,
                 ForeColor = Theme.Text,
-                BackColor = Theme.Card
+                BackColor = Theme.Card,
+                Padding = new Padding(0, 4, 0, 4)
             };
             grpSort.Controls.Add(radSortNumeric);
 
             chkReverse = new CheckBox
             {
                 Text = "反序",
-                Location = new Point(10, 108),
+                Dock = DockStyle.Top,
                 AutoSize = true,
                 ForeColor = Theme.TextDim,
-                BackColor = Theme.Card
+                BackColor = Theme.Card,
+                Padding = new Padding(0, 4, 0, 4)
             };
             grpSort.Controls.Add(chkReverse);
-            panel.Controls.Add(grpSort);
-            y += 137;
+            panel.Controls.Add(grpSort, 0, 1);
 
-            // 操作按钮
-            var btnSelect = CreateFlatButton("框选图块", leftMargin, y, 90, Theme.Primary);
+            // 操作按钮 FlowLayoutPanel
+            var btnActionPanel = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = true,
+                AutoSize = true,
+                BackColor = Theme.Bg,
+                Padding = new Padding(0, 8, 0, 0)
+            };
+
+            var btnSelect = CreateFlatButton("框选图块", 90, Theme.Primary);
             btnSelect.Click += (s, e) => ExecuteCommand("_BCSELECT");
-            panel.Controls.Add(btnSelect);
+            btnActionPanel.Controls.Add(btnSelect);
 
-            var btnSmart = CreateFlatButton("智能提取", leftMargin + 95, y, 80, Theme.AccentLight);
+            var btnSmart = CreateFlatButton("智能提取", 80, Theme.AccentLight);
             btnSmart.Click += (s, e) => ExecuteCommand("_BCSMARTEXTRACT");
-            panel.Controls.Add(btnSmart);
+            btnActionPanel.Controls.Add(btnSmart);
 
-            y += 32;
-
-            var btnClearData = CreateFlatButton("清除数据", leftMargin, y, 80, Theme.Warning);
+            var btnClearData = CreateFlatButton("清除数据", 80, Theme.Warning);
             btnClearData.Click += (s, e) => ClearData();
-            panel.Controls.Add(btnClearData);
+            btnActionPanel.Controls.Add(btnClearData);
 
-            y += 35;
+            panel.Controls.Add(btnActionPanel, 0, 2);
 
-            // 重置/导入/导出按钮
-            btnReset = CreateFlatButton("重置", leftMargin, y, 55, Theme.Warning);
+            // 重置/导入/导出按钮 FlowLayoutPanel
+            var btnSettingsPanel = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = true,
+                AutoSize = true,
+                BackColor = Theme.Bg,
+                Padding = new Padding(0, 8, 0, 0)
+            };
+
+            btnReset = CreateFlatButton("重置", 55, Theme.Warning);
             btnReset.Height = 24;
             btnReset.Click += (s, e) => ResetPanel();
-            panel.Controls.Add(btnReset);
+            btnSettingsPanel.Controls.Add(btnReset);
 
-            btnImport = CreateFlatButton("导入", leftMargin + 60, y, 55, Theme.Primary);
+            btnImport = CreateFlatButton("导入", 55, Theme.Primary);
             btnImport.Height = 24;
             btnImport.Click += (s, e) => ImportSettings();
-            panel.Controls.Add(btnImport);
+            btnSettingsPanel.Controls.Add(btnImport);
 
-            btnExport = CreateFlatButton("导出", leftMargin + 120, y, 55, Theme.AccentLight);
+            btnExport = CreateFlatButton("导出", 55, Theme.AccentLight);
             btnExport.Height = 24;
             btnExport.Click += (s, e) => ExportSettings();
-            panel.Controls.Add(btnExport);
+            btnSettingsPanel.Controls.Add(btnExport);
+
+            panel.Controls.Add(btnSettingsPanel, 0, 3);
 
             return panel;
         }
 
         /// <summary>
-        /// 创建图形缓冲区 + 缀参数区（中间栏）
+        /// 创建图形缓冲区 + 缀参数区（中间栏）- 流式布局
         /// </summary>
         private Panel CreateBufferPanel()
         {
-            var panel = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg, Padding = new Padding(4) };
+            var panel = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Theme.Bg,
+                Padding = new Padding(4),
+                ColumnCount = 1,
+                RowCount = 2
+            };
+            panel.RowStyles.Add(new RowStyle(SizeType.Percent, 65));
+            panel.RowStyles.Add(new RowStyle(SizeType.Percent, 35));
 
-            // 上部：图形缓冲区 DataGridView
+            // 上部：图形缓冲区 GroupBox
             var grpBuffer = new GroupBox
             {
                 Text = "图形缓冲区",
-                Location = new Point(4, 4),
-                Size = new Size(panel.Width - 8, 260),
+                Dock = DockStyle.Fill,
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
+                FlatStyle = FlatStyle.Flat,
+                Padding = new Padding(4)
+            };
+
+            // 内部 TableLayoutPanel：下拉框 + DataGridView + 右侧按钮
+            var bufferLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Theme.Card,
+                ColumnCount = 2,
+                RowCount = 1
+            };
+            bufferLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            bufferLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50));
+
+            // 图框块名下拉去重选择框
+            cmbBlockNameFilter = new ComboBox
+            {
+                Dock = DockStyle.Top,
+                Height = 24,
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text,
+                DropDownStyle = ComboBoxStyle.DropDownList,
                 FlatStyle = FlatStyle.Flat
             };
+            cmbBlockNameFilter.Items.Add("(全部)");
+            cmbBlockNameFilter.SelectedIndex = 0;
+            cmbBlockNameFilter.SelectedIndexChanged += (s, e) => FilterBlocksByName();
 
             // DataGridView
             dgvBlocks = new DataGridView
             {
-                Location = new Point(6, 44),
-                Size = new Size(grpBuffer.Width - 12, 170),
+                Dock = DockStyle.Fill,
                 BackgroundColor = Theme.Card,
                 ForeColor = Theme.Text,
                 BorderStyle = BorderStyle.None,
@@ -463,103 +534,132 @@ namespace BlockCatalogPlugin.UI
             dgvBlocks.DragOver += DgvBlocks_DragOver;
             dgvBlocks.DragDrop += DgvBlocks_DragDrop;
 
-            // 图框块名下拉去重选择框
-            cmbBlockNameFilter = new ComboBox
+            // 右侧小按钮 FlowLayoutPanel
+            var btnActionPanel = new FlowLayoutPanel
             {
-                Location = new Point(6, 18),
-                Size = new Size(grpBuffer.Width - 60, 22),
-                BackColor = Theme.InputBg,
-                ForeColor = Theme.Text,
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                FlatStyle = FlatStyle.Flat
-            };
-            cmbBlockNameFilter.Items.Add("(全部)");
-            cmbBlockNameFilter.SelectedIndex = 0;
-            cmbBlockNameFilter.SelectedIndexChanged += (s, e) => FilterBlocksByName();
-            grpBuffer.Controls.Add(cmbBlockNameFilter);
-
-            // 右侧小按钮
-            var btnPanel = new Panel
-            {
-                Location = new Point(grpBuffer.Width - 52, 44),
-                Size = new Size(46, 170),
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false,
                 BackColor = Theme.Card
             };
 
-            var btnPick = CreateFlatButton("选块", 2, 0, 42, Theme.Primary);
+            var btnPick = CreateFlatButton("选块", 42, Theme.Primary);
             btnPick.Height = 24;
             btnPick.Click += (s, e) => ExecuteCommand("_BCSELECT");
-            btnPanel.Controls.Add(btnPick);
+            btnActionPanel.Controls.Add(btnPick);
 
-            var btnRemove = CreateFlatButton("删块", 2, 28, 42, Theme.Warning);
+            var btnRemove = CreateFlatButton("删块", 42, Theme.Warning);
             btnRemove.Height = 24;
             btnRemove.Click += (s, e) => RemoveSelectedBlock();
-            btnPanel.Controls.Add(btnRemove);
+            btnActionPanel.Controls.Add(btnRemove);
 
-            var btnMoveUp = CreateFlatButton("▲", 2, 100, 42, Theme.Primary);
+            var btnMoveUp = CreateFlatButton("▲", 42, Theme.Primary);
             btnMoveUp.Height = 24;
             btnMoveUp.Click += (s, e) => MoveBlockUp();
-            btnPanel.Controls.Add(btnMoveUp);
+            btnActionPanel.Controls.Add(btnMoveUp);
 
-            var btnMoveDown = CreateFlatButton("▼", 2, 128, 42, Theme.Primary);
+            var btnMoveDown = CreateFlatButton("▼", 42, Theme.Primary);
             btnMoveDown.Height = 24;
             btnMoveDown.Click += (s, e) => MoveBlockDown();
-            btnPanel.Controls.Add(btnMoveDown);
+            btnActionPanel.Controls.Add(btnMoveDown);
 
-            grpBuffer.Controls.Add(btnPanel);
-            grpBuffer.Controls.Add(dgvBlocks);
-            panel.Controls.Add(grpBuffer);
+            // 左侧：下拉框 + DataGridView
+            var leftPanel = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                RowCount = 2,
+                ColumnCount = 1,
+                BackColor = Theme.Card
+            };
+            leftPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+            leftPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            leftPanel.Controls.Add(cmbBlockNameFilter, 0, 0);
+            leftPanel.Controls.Add(dgvBlocks, 0, 1);
 
-            // 下部：缀参数重编设置
+            bufferLayout.Controls.Add(leftPanel, 0, 0);
+            bufferLayout.Controls.Add(btnActionPanel, 1, 0);
+            grpBuffer.Controls.Add(bufferLayout);
+            panel.Controls.Add(grpBuffer, 0, 0);
+
+            // 下部：缀参数重编设置 GroupBox
             var grpSuffix = new GroupBox
             {
                 Text = "缀参数重编",
-                Location = new Point(4, 270),
-                Size = new Size(panel.Width - 8, 120),
+                Dock = DockStyle.Fill,
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
-                FlatStyle = FlatStyle.Flat
+                FlatStyle = FlatStyle.Flat,
+                Padding = new Padding(4)
             };
 
-            int sy = 18;
-            var lblStart = new Label { Text = "缀始:", Location = new Point(8, sy), AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 7.5F) };
-            grpSuffix.Controls.Add(lblStart);
+            // 内部 FlowLayoutPanel 实现自动折行
+            var suffixFlow = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = true,
+                BackColor = Theme.Card,
+                AutoScroll = false
+            };
 
-            txtSuffixStart = new TextBox { Location = new Point(42, sy - 2), Width = 45, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Microsoft YaHei UI", 8F), Text = "1" };
-            grpSuffix.Controls.Add(txtSuffixStart);
+            // 第一行：缀始 | 缀长 | 连续
+            var row1 = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoSize = true,
+                BackColor = Theme.Card
+            };
+            var lblStart = new Label { Text = "缀始:", AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F) };
+            row1.Controls.Add(lblStart);
+            txtSuffixStart = new TextBox { Width = 50, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Microsoft YaHei UI", 8F), Text = "1" };
+            row1.Controls.Add(txtSuffixStart);
+            var lblLen = new Label { Text = "缀长:", AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F), Margin = new Padding(8, 0, 0, 0) };
+            row1.Controls.Add(lblLen);
+            txtSuffixLength = new TextBox { Width = 40, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Microsoft YaHei UI", 8F), Text = "2" };
+            row1.Controls.Add(txtSuffixLength);
+            chkSuffixContinuous = new CheckBox { Text = "连续", AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card, Checked = true, Margin = new Padding(8, 0, 0, 0) };
+            row1.Controls.Add(chkSuffixContinuous);
 
-            var lblLen = new Label { Text = "缀长:", Location = new Point(92, sy), AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 7.5F) };
-            grpSuffix.Controls.Add(lblLen);
+            // 第二行：前缀 | 后缀
+            var row2 = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoSize = true,
+                BackColor = Theme.Card
+            };
+            var lblPrefix = new Label { Text = "前缀:", AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F) };
+            row2.Controls.Add(lblPrefix);
+            txtSuffixPrefix = new TextBox { Width = 80, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Microsoft YaHei UI", 8F) };
+            row2.Controls.Add(txtSuffixPrefix);
+            var lblSuffix = new Label { Text = "后缀:", AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F), Margin = new Padding(8, 0, 0, 0) };
+            row2.Controls.Add(lblSuffix);
+            txtSuffixSuffix = new TextBox { Width = 70, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Microsoft YaHei UI", 8F) };
+            row2.Controls.Add(txtSuffixSuffix);
 
-            txtSuffixLength = new TextBox { Location = new Point(126, sy - 2), Width = 35, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Microsoft YaHei UI", 8F), Text = "2" };
-            grpSuffix.Controls.Add(txtSuffixLength);
-
-            chkSuffixContinuous = new CheckBox { Text = "连续", Location = new Point(170, sy), AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card, Checked = true };
-            grpSuffix.Controls.Add(chkSuffixContinuous);
-
-            sy += 24;
-            var lblPrefix = new Label { Text = "前缀:", Location = new Point(8, sy), AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 7.5F) };
-            grpSuffix.Controls.Add(lblPrefix);
-
-            txtSuffixPrefix = new TextBox { Location = new Point(42, sy - 2), Width = 70, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Microsoft YaHei UI", 8F) };
-            grpSuffix.Controls.Add(txtSuffixPrefix);
-
-            var lblSuffix = new Label { Text = "后缀:", Location = new Point(118, sy), AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 7.5F) };
-            grpSuffix.Controls.Add(lblSuffix);
-
-            txtSuffixSuffix = new TextBox { Location = new Point(152, sy - 2), Width = 60, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Microsoft YaHei UI", 8F) };
-            grpSuffix.Controls.Add(txtSuffixSuffix);
-
-            sy += 28;
-            var btnApplySuffix = CreateFlatButton("应用缀编号", 8, sy, 100, Theme.Success);
+            // 第三行：按钮
+            var row3 = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoSize = true,
+                BackColor = Theme.Card
+            };
+            var btnApplySuffix = CreateFlatButton("应用缀编号", 90, Theme.Success);
+            btnApplySuffix.Height = 26;
             btnApplySuffix.Click += (s, e) => ApplySuffixRename();
-            grpSuffix.Controls.Add(btnApplySuffix);
-
-            var btnPreviewSuffix = CreateFlatButton("预览", 115, sy, 70, Theme.Primary);
+            row3.Controls.Add(btnApplySuffix);
+            var btnPreviewSuffix = CreateFlatButton("预览", 60, Theme.Primary);
+            btnPreviewSuffix.Height = 26;
             btnPreviewSuffix.Click += (s, e) => PreviewSuffixRename();
-            grpSuffix.Controls.Add(btnPreviewSuffix);
+            row3.Controls.Add(btnPreviewSuffix);
 
-            panel.Controls.Add(grpSuffix);
+            suffixFlow.Controls.Add(row1);
+            suffixFlow.Controls.Add(row2);
+            suffixFlow.Controls.Add(row3);
+            grpSuffix.Controls.Add(suffixFlow);
+            panel.Controls.Add(grpSuffix, 0, 1);
 
             return panel;
         }
@@ -569,107 +669,161 @@ namespace BlockCatalogPlugin.UI
         /// </summary>
         private Panel CreateOutputPanel()
         {
-            var panel = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg, Padding = new Padding(4) };
+            var panel = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Theme.Bg,
+                Padding = new Padding(4),
+                ColumnCount = 1,
+                RowCount = 5
+            };
+            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 65));
+            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 105));
+            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 45));
+            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+            panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
             // 列宽公式 GroupBox
             var grpColWidth = new GroupBox
             {
                 Text = "列宽公式",
-                Location = new Point(4, 4),
-                Size = new Size(panel.Width - 8, 60),
+                Dock = DockStyle.Fill,
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
-                FlatStyle = FlatStyle.Flat
+                FlatStyle = FlatStyle.Flat,
+                Padding = new Padding(4)
+            };
+
+            var colWidthFlow = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false,
+                BackColor = Theme.Card,
+                AutoSize = true
             };
 
             txtColumnFormula = new TextBox
             {
-                Location = new Point(8, 18),
-                Size = new Size(grpColWidth.Width - 16, 22),
+                Width = 200,
                 BackColor = Theme.InputBg,
                 ForeColor = Theme.Text,
                 BorderStyle = BorderStyle.FixedSingle,
                 Font = new Font("Consolas", 8F),
                 Text = "20+40+60"
             };
-            grpColWidth.Controls.Add(txtColumnFormula);
+            colWidthFlow.Controls.Add(txtColumnFormula);
 
-            var btnApplyFormula = CreateFlatButton("应用", 8, 42, 55, Theme.Primary);
-            btnApplyFormula.Height = 18;
+            var btnRow = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoSize = true,
+                BackColor = Theme.Card
+            };
+            var btnApplyFormula = CreateFlatButton("应用", 55, Theme.Primary);
+            btnApplyFormula.Height = 22;
             btnApplyFormula.Click += (s, e) => ApplyColumnFormula();
-            grpColWidth.Controls.Add(btnApplyFormula);
+            btnRow.Controls.Add(btnApplyFormula);
 
-            var btnGetFormula = CreateFlatButton("获取", 68, 42, 55, Theme.Accent);
-            btnGetFormula.Height = 18;
+            var btnGetFormula = CreateFlatButton("获取", 55, Theme.Accent);
+            btnGetFormula.Height = 22;
             btnGetFormula.Click += (s, e) => txtColumnFormula.Text = _currentStyle.GetFormulaWidths();
-            grpColWidth.Controls.Add(btnGetFormula);
+            btnRow.Controls.Add(btnGetFormula);
+            colWidthFlow.Controls.Add(btnRow);
 
-            panel.Controls.Add(grpColWidth);
+            grpColWidth.Controls.Add(colWidthFlow);
+            panel.Controls.Add(grpColWidth, 0, 0);
 
             // 表格样式 GroupBox
             var grpStyle = new GroupBox
             {
                 Text = "表格样式",
-                Location = new Point(4, 70),
-                Size = new Size(panel.Width - 8, 95),
+                Dock = DockStyle.Fill,
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
-                FlatStyle = FlatStyle.Flat
+                FlatStyle = FlatStyle.Flat,
+                Padding = new Padding(4)
             };
 
-            int sy = 18;
+            var styleFlow = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = true,
+                BackColor = Theme.Card,
+                AutoSize = true
+            };
 
-            var lblFontH = new Label { Text = "字高:", Location = new Point(8, sy), AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 7.5F) };
-            grpStyle.Controls.Add(lblFontH);
+            // 第一行：字高 + 行高
+            var row1 = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoSize = true,
+                BackColor = Theme.Card
+            };
+            var lblFontH = new Label { Text = "字高:", AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F) };
+            row1.Controls.Add(lblFontH);
+            numFontHeight = new NumericUpDown { Width = 55, Minimum = 1, Maximum = 20, Value = 3.5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
+            row1.Controls.Add(numFontHeight);
+            var lblRowH = new Label { Text = "行高:", AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F), Margin = new Padding(10, 0, 0, 0) };
+            row1.Controls.Add(lblRowH);
+            numRowHeight = new NumericUpDown { Width = 55, Minimum = 1, Maximum = 50, Value = 5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
+            row1.Controls.Add(numRowHeight);
 
-            numFontHeight = new NumericUpDown { Location = new Point(50, sy - 2), Width = 50, Minimum = 1, Maximum = 20, Value = 3.5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
-            grpStyle.Controls.Add(numFontHeight);
+            // 第二行：显示表头
+            var row2 = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoSize = true,
+                BackColor = Theme.Card
+            };
+            chkShowHeader = new CheckBox { Text = "显示表头", AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card, Checked = true };
+            row2.Controls.Add(chkShowHeader);
 
-            var lblRowH = new Label { Text = "行高:", Location = new Point(108, sy), AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 7.5F) };
-            grpStyle.Controls.Add(lblRowH);
-
-            numRowHeight = new NumericUpDown { Location = new Point(145, sy - 2), Width = 50, Minimum = 1, Maximum = 50, Value = 5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
-            grpStyle.Controls.Add(numRowHeight);
-
-            sy += 26;
-
-            chkShowHeader = new CheckBox { Text = "显示表头", Location = new Point(8, sy), AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card, Checked = true };
-            grpStyle.Controls.Add(chkShowHeader);
-
-            sy += 22;
-
-            var lblLayout = new Label { Text = "输出:", Location = new Point(8, sy), AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 7.5F) };
-            grpStyle.Controls.Add(lblLayout);
-
-            radModelSpace = new RadioButton { Text = "模型", Location = new Point(45, sy), AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card, Checked = true };
-            grpStyle.Controls.Add(radModelSpace);
-
-            radLayout = new RadioButton { Text = "布局", Location = new Point(90, sy), AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card };
-            grpStyle.Controls.Add(radLayout);
-
-            cmbLayoutName = new ComboBox { Location = new Point(130, sy - 2), Width = 55, DropDownStyle = ComboBoxStyle.DropDownList, BackColor = Theme.InputBg, ForeColor = Theme.Text, Enabled = false };
+            // 第三行：输出目标
+            var row3 = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoSize = true,
+                BackColor = Theme.Card
+            };
+            var lblLayout = new Label { Text = "输出:", AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F) };
+            row3.Controls.Add(lblLayout);
+            radModelSpace = new RadioButton { Text = "模型", AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card, Checked = true };
+            row3.Controls.Add(radModelSpace);
+            radLayout = new RadioButton { Text = "布局", AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            row3.Controls.Add(radLayout);
+            cmbLayoutName = new ComboBox { Width = 70, DropDownStyle = ComboBoxStyle.DropDownList, BackColor = Theme.InputBg, ForeColor = Theme.Text, Enabled = false };
             cmbLayoutName.Items.Add("Model");
             cmbLayoutName.SelectedIndex = 0;
-            grpStyle.Controls.Add(cmbLayoutName);
-
+            row3.Controls.Add(cmbLayoutName);
             radLayout.CheckedChanged += (s, e) => { cmbLayoutName.Enabled = radLayout.Checked; };
-            panel.Controls.Add(grpStyle);
+
+            styleFlow.Controls.Add(row1);
+            styleFlow.Controls.Add(row2);
+            styleFlow.Controls.Add(row3);
+            grpStyle.Controls.Add(styleFlow);
+            panel.Controls.Add(grpStyle, 0, 1);
 
             // 间距表达式
             var grpSpacing = new GroupBox
             {
                 Text = "间距表达式",
-                Location = new Point(4, 170),
-                Size = new Size(panel.Width - 8, 45),
+                Dock = DockStyle.Fill,
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
-                FlatStyle = FlatStyle.Flat
+                FlatStyle = FlatStyle.Flat,
+                Padding = new Padding(4)
             };
 
             txtSpacingExpression = new TextBox
             {
-                Location = new Point(8, 18),
-                Size = new Size(grpSpacing.Width - 16, 22),
+                Dock = DockStyle.Top,
+                Height = 24,
                 BackColor = Theme.InputBg,
                 ForeColor = Theme.Text,
                 BorderStyle = BorderStyle.FixedSingle,
@@ -677,29 +831,33 @@ namespace BlockCatalogPlugin.UI
                 Text = "5"
             };
             grpSpacing.Controls.Add(txtSpacingExpression);
-            panel.Controls.Add(grpSpacing);
+            panel.Controls.Add(grpSpacing, 0, 2);
 
-            // 输出按钮
-            int btnY = 225;
+            // 输出按钮区
+            var btnFlow = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false,
+                BackColor = Theme.Bg
+            };
 
-            var btnPreview = CreateFlatButton("预览目录", 4, btnY, panel.Width - 8, Theme.Primary);
-            btnPreview.Height = 35;
+            var btnPreview = CreateFlatButton("预览目录", 120, Theme.Primary);
+            btnPreview.Height = 30;
             btnPreview.Click += (s, e) => ShowPreview();
-            panel.Controls.Add(btnPreview);
+            btnFlow.Controls.Add(btnPreview);
 
-            btnY += 42;
-
-            var btnGenerate = CreateFlatButton("生成目录", 4, btnY, panel.Width - 8, Theme.Success);
-            btnGenerate.Height = 40;
+            var btnGenerate = CreateFlatButton("生成目录", 120, Theme.Success);
+            btnGenerate.Height = 35;
             btnGenerate.Click += (s, e) => GenerateToPosition();
-            panel.Controls.Add(btnGenerate);
+            btnFlow.Controls.Add(btnGenerate);
 
-            btnY += 48;
-
-            var btnSyncAttrs = CreateFlatButton("同步至图纸属性", 4, btnY, panel.Width - 8, Theme.AccentLight);
-            btnSyncAttrs.Height = 35;
+            var btnSyncAttrs = CreateFlatButton("同步至图纸属性", 120, Theme.AccentLight);
+            btnSyncAttrs.Height = 30;
             btnSyncAttrs.Click += (s, e) => SyncAttributesToBlocks();
-            panel.Controls.Add(btnSyncAttrs);
+            btnFlow.Controls.Add(btnSyncAttrs);
+
+            panel.Controls.Add(btnFlow, 0, 3);
 
             return panel;
         }
@@ -832,13 +990,12 @@ namespace BlockCatalogPlugin.UI
                 dgvBlocks.DataSource = null;
                 dgvBlocks.Columns.Clear();
 
-                var engine = new SuffixPatternEngine();
                 int startNum = 1, numLength = 2;
                 int.TryParse(txtSuffixStart.Text, out startNum);
                 int.TryParse(txtSuffixLength.Text, out numLength);
                 string prefix = txtSuffixPrefix.Text ?? "";
                 string suffix = txtSuffixSuffix.Text ?? "";
-                var previewValues = engine.GenerateNumberSequence(filteredBlocks.Count, prefix, suffix, startNum, numLength);
+                var previewValues = _suffixEngine.GenerateNumberSequence(filteredBlocks.Count, prefix, suffix, startNum, numLength);
 
                 dgvBlocks.DataSource = filteredBlocks.Select((b, idx) => new
                 {
@@ -1016,7 +1173,7 @@ namespace BlockCatalogPlugin.UI
             string prefix = txtSuffixPrefix.Text ?? "";
             string suffix = txtSuffixSuffix.Text ?? "";
 
-            var engine = new SuffixPatternEngine();
+            var engine = _suffixEngine;
             var previewValues = engine.GenerateNumberSequence(_currentResult.Blocks.Count, prefix, suffix, startNum, numLength);
 
             dgvBlocks.DataSource = _currentResult.Blocks.Select((b, idx) => new
@@ -1231,8 +1388,7 @@ namespace BlockCatalogPlugin.UI
 
             AppendLog($"正在同步属性到图纸...", Theme.TextDim);
 
-            var engine = new SuffixPatternEngine();
-            bool success = engine.BulkRenameAttributes(
+            bool success = _suffixEngine.BulkRenameAttributes(
                 targetBlocks,
                 GetActiveTag(),
                 prefix,
@@ -1419,12 +1575,11 @@ namespace BlockCatalogPlugin.UI
 
         #region Helpers
 
-        private Button CreateFlatButton(string text, int x, int y, int width, Color? bgColor = null)
+        private Button CreateFlatButton(string text, int width, Color? bgColor = null)
         {
             var btn = new Button
             {
                 Text = text,
-                Location = new Point(x, y),
                 Width = width,
                 Height = 26,
                 BackColor = bgColor ?? Theme.Card,

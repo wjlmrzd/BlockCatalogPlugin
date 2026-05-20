@@ -1060,54 +1060,63 @@ namespace BlockCatalogPlugin.UI
                 lblTargetAttribute.Text = $"目标属性: {selectedTag}";
 
                 var config = _ruleConfigs[selectedTag];
-                cmbRuleType.SelectedIndex = (int)config.RuleType;
-                numStart.Value = config.StartNum;
-                numStep.Value = Math.Abs(config.Step);
-                // 处理格式：预设或自定义
-                if (cmbFormat.Items.Contains(config.Format))
-                    cmbFormat.SelectedItem = config.Format;
-                else
-                {
-                    cmbFormat.SelectedIndex = cmbFormat.Items.Count - 1; // "自定义..."
-                    txtCustomExpr.Text = config.Format;
-                }
-                txtPrefix.Text = config.Prefix;
-                txtSuffix.Text = config.Suffix;
-                numOperand.Value = (decimal)config.Operand;
-                txtReplaceValue.Text = config.ReplaceValue;
-                txtRegexPattern.Text = config.RegexPattern;
-                txtRegexReplacement.Text = config.RegexReplacement;
-
-                if (cmbGroupBy.Items.Contains(config.GroupByTag))
-                    cmbGroupBy.SelectedItem = config.GroupByTag;
-                else
-                    cmbGroupBy.SelectedIndex = 0;
-
-                chkResetPerGroup.Checked = config.ResetPerGroup;
-                txtTypeAbbreviations.Text = FormatTypeAbbreviations(config.TypeAbbreviations);
-
-                // 条件
-                if (config.Condition != null)
-                {
-                    cmbConditionType.SelectedIndex = (int)config.Condition.Type;
-                    if (cmbConditionAttribute.Items.Contains(config.Condition.TargetAttribute))
-                        cmbConditionAttribute.SelectedItem = config.Condition.TargetAttribute;
-                    txtConditionValue.Text = config.Condition.ConditionValue;
-                    numRangeMin.Value = (decimal)config.Condition.RangeMin;
-                    numRangeMax.Value = (decimal)config.Condition.RangeMax;
-                    chkExcludeMode.Checked = config.Condition.ExcludeMode;
-                }
-
-                // 同步复制目标
-                for (int i = 0; i < chkSyncTargets.Items.Count; i++)
-                {
-                    bool isTarget = config.SyncCopyTargets.Any(t => t.Attribute == _availableTags[i]);
-                    chkSyncTargets.SetItemChecked(i, isTarget);
-                }
-                txtSyncFormat.Text = config.SyncCopyTargets.FirstOrDefault()?.FormatTemplate ?? "第{值}页";
-
+                ApplyRuleToPanel(config);
                 UpdateRuleConfigVisibility();
             }
+        }
+
+        /// <summary>
+        /// 将规则配置应用到规则配置面板控件
+        /// </summary>
+        private void ApplyRuleToPanel(AttributeRuleConfig config)
+        {
+            if (config == null) return;
+
+            cmbRuleType.SelectedIndex = (int)config.RuleType;
+            numStart.Value = config.StartNum;
+            numStep.Value = Math.Abs(config.Step);
+            // 处理格式：预设或自定义
+            if (cmbFormat.Items.Contains(config.Format))
+                cmbFormat.SelectedItem = config.Format;
+            else
+            {
+                cmbFormat.SelectedIndex = cmbFormat.Items.Count - 1; // "自定义..."
+                txtCustomExpr.Text = config.Format;
+            }
+            txtPrefix.Text = config.Prefix;
+            txtSuffix.Text = config.Suffix;
+            numOperand.Value = (decimal)config.Operand;
+            txtReplaceValue.Text = config.ReplaceValue;
+            txtRegexPattern.Text = config.RegexPattern;
+            txtRegexReplacement.Text = config.RegexReplacement;
+
+            if (cmbGroupBy.Items.Contains(config.GroupByTag))
+                cmbGroupBy.SelectedItem = config.GroupByTag;
+            else
+                cmbGroupBy.SelectedIndex = 0;
+
+            chkResetPerGroup.Checked = config.ResetPerGroup;
+            txtTypeAbbreviations.Text = FormatTypeAbbreviations(config.TypeAbbreviations);
+
+            // 条件
+            if (config.Condition != null)
+            {
+                cmbConditionType.SelectedIndex = (int)config.Condition.Type;
+                if (cmbConditionAttribute.Items.Contains(config.Condition.TargetAttribute))
+                    cmbConditionAttribute.SelectedItem = config.Condition.TargetAttribute;
+                txtConditionValue.Text = config.Condition.ConditionValue;
+                numRangeMin.Value = (decimal)config.Condition.RangeMin;
+                numRangeMax.Value = (decimal)config.Condition.RangeMax;
+                chkExcludeMode.Checked = config.Condition.ExcludeMode;
+            }
+
+            // 同步复制目标
+            for (int i = 0; i < chkSyncTargets.Items.Count; i++)
+            {
+                bool isTarget = config.SyncCopyTargets.Any(t => t.Attribute == _availableTags[i]);
+                chkSyncTargets.SetItemChecked(i, isTarget);
+            }
+            txtSyncFormat.Text = config.SyncCopyTargets.FirstOrDefault()?.FormatTemplate ?? "第{值}页";
         }
 
         private void ChkAttributeList_ItemCheck(object sender, ItemCheckEventArgs e)
@@ -1119,6 +1128,82 @@ namespace BlockCatalogPlugin.UI
         {
             int count = chkAttributeList.CheckedItems.Count;
             lblSelectedCount.Text = $"已选择: {count}个属性";
+        }
+
+        /// <summary>
+        /// 简单的输入框对话框
+        /// </summary>
+        private string ShowInputBox(string prompt, string title, string defaultValue)
+        {
+            var form = new Form
+            {
+                Width = 350,
+                Height = 150,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition = FormStartPosition.CenterParent,
+                Text = title,
+                BackColor = Theme.Bg,
+                ForeColor = Theme.Text
+            };
+
+            var label = new Label
+            {
+                Text = prompt,
+                Left = 15,
+                Top = 20,
+                Width = 320,
+                AutoSize = true,
+                ForeColor = Theme.Text
+            };
+
+            var textBox = new TextBox
+            {
+                Left = 15,
+                Top = 50,
+                Width = 310,
+                Text = defaultValue,
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text
+            };
+
+            var okButton = new Button
+            {
+                Text = "确定",
+                Left = 160,
+                Width = 70,
+                Top = 80,
+                Height = 26,
+                DialogResult = DialogResult.OK,
+                BackColor = Theme.Accent,
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            okButton.FlatAppearance.BorderSize = 0;
+
+            var cancelButton = new Button
+            {
+                Text = "取消",
+                Left = 240,
+                Width = 70,
+                Top = 80,
+                Height = 26,
+                DialogResult = DialogResult.Cancel,
+                BackColor = Theme.Card,
+                ForeColor = Theme.Text,
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            cancelButton.FlatAppearance.BorderSize = 0;
+
+            form.Controls.Add(label);
+            form.Controls.Add(textBox);
+            form.Controls.Add(okButton);
+            form.Controls.Add(cancelButton);
+            form.AcceptButton = okButton;
+            form.CancelButton = cancelButton;
+
+            return form.ShowDialog() == DialogResult.OK ? textBox.Text : "";
         }
 
         private void UpdateCurrentRuleConfig()
@@ -1273,16 +1358,82 @@ namespace BlockCatalogPlugin.UI
                 return;
             }
 
-            // 应用模板配置（Rules 属性已移除，跳过）
-            // TODO: 重新设计模板加载逻辑
+            // 应用批量修改规则（BatchModifyRules）
+            if (templateConfig.BatchModifyRules != null && templateConfig.BatchModifyRules.Count > 0)
+            {
+                // 恢复每个属性的勾选状态和规则配置
+                for (int i = 0; i < chkAttributeList.Items.Count; i++)
+                {
+                    string tag = chkAttributeList.Items[i].ToString();
+                    var rule = templateConfig.BatchModifyRules
+                        .FirstOrDefault(r => r.TargetTag.Equals(tag, StringComparison.OrdinalIgnoreCase));
 
-            lblStatus.Text = $"状态: 已加载模板 '{templateName}'（Rules 已移除，功能待重新设计）";
-            MessageBox.Show($"模板 '{templateName}' 已加载（模板加载功能正在重新设计中）", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    if (rule != null)
+                    {
+                        chkAttributeList.SetItemChecked(i, rule.Enabled);
+                        _ruleConfigs[tag] = rule;
+                    }
+                    else
+                    {
+                        chkAttributeList.SetItemChecked(i, false);
+                    }
+                }
+
+                // 应用第一个已启用的规则到规则配置面板
+                var firstEnabled = templateConfig.BatchModifyRules.FirstOrDefault(r => r.Enabled);
+                if (firstEnabled != null)
+                {
+                    ApplyRuleToPanel(firstEnabled);
+                }
+
+                lblStatus.Text = $"状态: 已加载模板 '{templateName}'";
+                MessageBox.Show($"模板 '{templateName}' 已加载（{templateConfig.BatchModifyRules.Count} 条规则）", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                lblStatus.Text = $"状态: 模板 '{templateName}' 无批量修改规则，仅包含样式配置";
+                MessageBox.Show($"模板 '{templateName}' 中无批量修改规则配置", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
         }
 
         private void BtnSaveTemplate_Click(object sender, EventArgs e)
         {
-            MessageBox.Show("保存模板功能正在重新设计中", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            string templateName = ShowInputBox("请输入模板名称：", "保存模板", "我的模板");
+            if (string.IsNullOrWhiteSpace(templateName)) return;
+
+            // 收集当前对话框中的已勾选属性规则
+            var rules = new List<AttributeRuleConfig>();
+            for (int i = 0; i < chkAttributeList.Items.Count; i++)
+            {
+                string tag = chkAttributeList.Items[i].ToString();
+                if (chkAttributeList.GetItemChecked(i) && _ruleConfigs.ContainsKey(tag))
+                {
+                    var rule = _ruleConfigs[tag];
+                    rule.Enabled = true;
+                    rules.Add(rule);
+                }
+            }
+
+            if (rules.Count == 0)
+            {
+                MessageBox.Show("请至少勾选一个属性后再保存模板", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // 创建 CatalogStyle（使用默认值）和 BatchModifyConfig
+            var style = new CatalogStyle();
+            var batchConfig = new BatchModifyConfig { Rules = rules };
+
+            if (_templateManager.SaveTemplate(templateName, style, batchConfig))
+            {
+                LoadTemplatesToComboBox();
+                lblStatus.Text = $"状态: 已保存模板 '{templateName}'";
+                MessageBox.Show($"模板 '{templateName}' 已保存", "成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show($"保存模板 '{templateName}' 失败", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private void BtnDeleteTemplate_Click(object sender, EventArgs e)
