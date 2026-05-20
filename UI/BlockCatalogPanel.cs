@@ -395,10 +395,9 @@ namespace BlockCatalogPlugin.UI
             };
             numTolerance.ValueChanged += (s, e) =>
             {
-                // 存储容差值到 preferences 或直接使用
                 _sortTolerance = (double)numTolerance.Value;
             };
-            _sortTolerance = 500; // 默认值
+            _sortTolerance = (double)numTolerance.Value; // 初始化为控件当前值
 
             // 添加所有排序控件到分组
             grpSort.Controls.AddRange(new Control[] {
