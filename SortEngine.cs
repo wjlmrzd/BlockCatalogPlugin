@@ -40,16 +40,12 @@ namespace BlockCatalogPlugin
                     sorted = blocks.OrderBy(b => ExtractSortKey(b)).ToList();
                     break;
                 case SortType.TopBottom_LeftRight:
-                    // 上下左右：先按Y分组（容差），组内按X排序
-                    sorted = blocks.OrderBy(b => GetRowGroup(b.Position.Y, tolerance))
-                                   .ThenBy(b => b.Position.X)
-                                   .ToList();
+                    // 上下左右：动态冒泡邻近容差分行法
+                    sorted = SortByTopBottom_LeftRight(blocks, tolerance);
                     break;
                 case SortType.LeftRight_TopBottom:
-                    // 左右上下：先按X分组（容差），组内按Y排序
-                    sorted = blocks.OrderBy(b => GetColGroup(b.Position.X, tolerance))
-                                   .ThenByDescending(b => b.Position.Y)
-                                   .ToList();
+                    // 左右上下：动态冒泡邻近容差分列法
+                    sorted = SortByLeftRight_TopBottom(blocks, tolerance);
                     break;
                 default:
                     sorted = new List<AttributeBlockData>(blocks);
@@ -72,23 +68,105 @@ namespace BlockCatalogPlugin
         }
 
         /// <summary>
-        /// 获取行分组编号（用于上下左右排序）
-        /// Y坐标从大到小排列，所以用负数使Y大的组号小（排前面）
+        /// 上下左右排序 - 动态冒泡邻近容差分行法
+        /// 1. 先按 Y 坐标从大到小排序（上方先出现）
+        /// 2. 遍历时若当前块 Y 与上一块 Y 差值绝对值 < tolerance，则认为同一横排
+        /// 3. 同一排内按 X 从小到大排序（从左到右）
         /// </summary>
-        private double GetRowGroup(double y, double tolerance)
+        private List<AttributeBlockData> SortByTopBottom_LeftRight(List<AttributeBlockData> blocks, double tolerance)
         {
-            // 容差分组：Y坐标除以tolerance，向下取整
-            // 负号使Y大的（在上方）组号小，排序时排前面
-            return -Math.Floor(y / tolerance);
+            // Step 1: 先按 Y 从大到小排序
+            var sortedByY = blocks.OrderByDescending(b => b.Position.Y).ToList();
+
+            // Step 2: 动态冒泡分组，组内按 X 排序
+            var result = new List<AttributeBlockData>();
+            var currentRow = new List<AttributeBlockData>();
+            double? lastY = null;
+
+            for (int i = 0; i < sortedByY.Count; i++)
+            {
+                var block = sortedByY[i];
+
+                if (lastY.HasValue)
+                {
+                    double yDiff = Math.Abs(block.Position.Y - lastY.Value);
+                    if (yDiff >= tolerance)
+                    {
+                        // Y 差超过容差，开启新行
+                        // 将当前行的块按 X 排序后加入结果
+                        foreach (var b in currentRow.OrderBy(x => x.Position.X))
+                        {
+                            result.Add(b);
+                        }
+                        currentRow.Clear();
+                    }
+                }
+
+                currentRow.Add(block);
+                lastY = block.Position.Y;
+            }
+
+            // 处理最后一行
+            if (currentRow.Count > 0)
+            {
+                foreach (var b in currentRow.OrderBy(x => x.Position.X))
+                {
+                    result.Add(b);
+                }
+            }
+
+            return result;
         }
 
         /// <summary>
-        /// 获取列分组编号（用于左右上下排序）
-        /// X坐标从小到大排列，所以组号就是X/tolerance
+        /// 左右上下排序 - 动态冒泡邻近容差分列法
+        /// 1. 先按 X 坐标从小到大排序（左边先出现）
+        /// 2. 遍历时若当前块 X 与上一块 X 差值绝对值 < tolerance，则认为同一纵列
+        /// 3. 同一列内按 Y 从大到小排序（从上到下）
         /// </summary>
-        private double GetColGroup(double x, double tolerance)
+        private List<AttributeBlockData> SortByLeftRight_TopBottom(List<AttributeBlockData> blocks, double tolerance)
         {
-            return Math.Floor(x / tolerance);
+            // Step 1: 先按 X 从小到大排序
+            var sortedByX = blocks.OrderBy(b => b.Position.X).ToList();
+
+            // Step 2: 动态冒泡分组，组内按 Y 排序
+            var result = new List<AttributeBlockData>();
+            var currentCol = new List<AttributeBlockData>();
+            double? lastX = null;
+
+            for (int i = 0; i < sortedByX.Count; i++)
+            {
+                var block = sortedByX[i];
+
+                if (lastX.HasValue)
+                {
+                    double xDiff = Math.Abs(block.Position.X - lastX.Value);
+                    if (xDiff >= tolerance)
+                    {
+                        // X 差超过容差，开启新列
+                        // 将当前列的块按 Y 排序后加入结果
+                        foreach (var b in currentCol.OrderByDescending(y => y.Position.Y))
+                        {
+                            result.Add(b);
+                        }
+                        currentCol.Clear();
+                    }
+                }
+
+                currentCol.Add(block);
+                lastX = block.Position.X;
+            }
+
+            // 处理最后一列
+            if (currentCol.Count > 0)
+            {
+                foreach (var b in currentCol.OrderByDescending(y => y.Position.Y))
+                {
+                    result.Add(b);
+                }
+            }
+
+            return result;
         }
 
         /// <summary>

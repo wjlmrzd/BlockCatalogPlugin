@@ -5,9 +5,11 @@ using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Windows.Forms;
 using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Geometry;
 using BlockCatalogPlugin;
+using Font = System.Drawing.Font;
 
 namespace BlockCatalogPlugin.UI
 {
@@ -759,12 +761,11 @@ namespace BlockCatalogPlugin.UI
 
         private void ImportSettings()
         {
-            using (var dlg = new SaveFileDialog())
+            using (var dlg = new OpenFileDialog())
             {
                 dlg.Filter = "JSON 文件 (*.json)|*.json|所有文件 (*.*)|*.*";
                 dlg.Title = "导入设置";
                 dlg.DefaultExt = "json";
-                dlg.FileName = "BlockCatalogSettings.json";
 
                 if (dlg.ShowDialog() == DialogResult.OK)
                 {
@@ -1095,17 +1096,25 @@ namespace BlockCatalogPlugin.UI
 
             if (targetIndex < 0 || _dragRowIndex < 0 || targetIndex == _dragRowIndex) return;
 
-            // 交换行数据
-            var temp = _currentResult.Blocks[_dragRowIndex];
-            _currentResult.Blocks[_dragRowIndex] = _currentResult.Blocks[targetIndex];
-            _currentResult.Blocks[targetIndex] = temp;
+            // 标准 RemoveAt/Insert 插队逻辑
+            var draggedBlock = _currentResult.Blocks[_dragRowIndex];
+            _currentResult.Blocks.RemoveAt(_dragRowIndex);
+
+            // 修正 targetIndex：如果移除位置在目标位置之前，目标位置需要-1
+            int insertIndex = targetIndex;
+            if (_dragRowIndex < targetIndex)
+            {
+                insertIndex = targetIndex - 1;
+            }
+
+            _currentResult.Blocks.Insert(insertIndex, draggedBlock);
 
             RefreshDataGridView();
 
             // 选中新位置的行
-            if (targetIndex >= 0 && targetIndex < dgvBlocks.Rows.Count)
+            if (insertIndex >= 0 && insertIndex < dgvBlocks.Rows.Count)
             {
-                dgvBlocks.Rows[targetIndex].Selected = true;
+                dgvBlocks.Rows[insertIndex].Selected = true;
             }
 
             _dragRowIndex = -1;
@@ -1274,9 +1283,9 @@ namespace BlockCatalogPlugin.UI
 
             try
             {
-                // 根据排序模式获取排序后的数据
+                // 根据排序模式获取排序后的数据（含容差和反序参数）
                 var sortType = GetSelectedSortType();
-                var sortedBlocks = _sortEngine.Sort(_currentResult.Blocks, sortType);
+                var sortedBlocks = _sortEngine.Sort(_currentResult.Blocks, sortType, 500.0, chkReverse.Checked);
 
                 string targetLayout = null;
                 if (radLayout.Checked && cmbLayoutName.SelectedItem != null)
@@ -1284,19 +1293,54 @@ namespace BlockCatalogPlugin.UI
                     targetLayout = cmbLayoutName.SelectedItem.ToString();
                 }
 
-                MergeConfig mergeConfig = null;
-                if (_currentStyle.MergeStrategy == MergeStrategy.PrefixConsecutive)
+                // 将排序后的 AttributeBlockData 转换为 BlockDataResult
+                var blockDataResult = new BlockDataResult();
+                foreach (var attrBlock in sortedBlocks)
                 {
-                    mergeConfig = new MergeConfig
+                    var blockData = new BlockData
                     {
-                        EnableMerge = true,
-                        Criterion = MergeCriterion.Prefix,
-                        GroupSymbol = "-",
-                        RangeSymbol = "~"
+                        BlockName = attrBlock.BlockName,
+                        ObjectId = attrBlock.BlockId,
+                        Attributes = attrBlock.Attributes?.Select(kv => new BlockAttribute { Tag = kv.Key, Value = kv.Value }).ToList()
+                            ?? new List<BlockAttribute>()
                     };
+                    blockDataResult.Blocks.Add(blockData);
                 }
 
-                var tableId = _generator.GenerateTable(sortedBlocks, _currentStyle, mergeConfig, pos, targetLayout);
+                // 调用真正的 Generate 方法生成带网格线的目录实体
+                var entities = _generator.Generate(blockDataResult, _currentStyle, pos, targetLayout);
+
+                // 将实体写入 CAD 图纸数据库
+                var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+                if (doc != null)
+                {
+                    using (var docLock = doc.LockDocument())
+                    using (var tr = doc.Database.TransactionManager.StartTransaction())
+                    {
+                        // 获取目标空间（模型空间或布局）
+                        BlockTableRecord ms;
+                        if (!string.IsNullOrEmpty(targetLayout))
+                        {
+                            var bt = (BlockTable)tr.GetObject(doc.Database.BlockTableId, OpenMode.ForRead);
+                            var btr = (BlockTableRecord)tr.GetObject(bt[targetLayout], OpenMode.ForRead);
+                            ms = (BlockTableRecord)tr.GetObject(btr.Id, OpenMode.ForWrite);
+                        }
+                        else
+                        {
+                            ms = (BlockTableRecord)tr.GetObject(doc.Database.CurrentSpaceId, OpenMode.ForWrite);
+                        }
+
+                        // 将所有生成的实体添加到图纸
+                        foreach (var entity in entities)
+                        {
+                            ms.AppendEntity(entity);
+                            tr.AddNewlyCreatedDBObject(entity, true);
+                        }
+
+                        tr.Commit();
+                    }
+                }
+
                 AppendLog("目录已生成", Theme.Success);
 
                 if (targetLayout != null)
@@ -1456,8 +1500,9 @@ namespace BlockCatalogPlugin.UI
 
             try
             {
+                // 根据排序模式获取排序后的数据（含容差和反序参数）
                 var sortType = GetSelectedSortType();
-                var sortedBlocks = _sortEngine.Sort(_currentResult.Blocks, sortType);
+                var sortedBlocks = _sortEngine.Sort(_currentResult.Blocks, sortType, 500.0, chkReverse.Checked);
 
                 string targetLayout = null;
                 if (radLayout.Checked && cmbLayoutName.SelectedItem != null)
@@ -1465,20 +1510,56 @@ namespace BlockCatalogPlugin.UI
                     targetLayout = cmbLayoutName.SelectedItem.ToString();
                 }
 
-                MergeConfig mergeConfig = null;
-                if (_currentStyle.MergeStrategy == MergeStrategy.PrefixConsecutive)
+                // 将排序后的 AttributeBlockData 转换为 BlockDataResult
+                var blockDataResult = new BlockDataResult();
+                foreach (var attrBlock in sortedBlocks)
                 {
-                    mergeConfig = new MergeConfig
+                    var blockData = new BlockData
                     {
-                        EnableMerge = true,
-                        Criterion = MergeCriterion.Prefix,
-                        GroupSymbol = "-",
-                        RangeSymbol = "~"
+                        BlockName = attrBlock.BlockName,
+                        ObjectId = attrBlock.BlockId,
+                        Attributes = attrBlock.Attributes?.Select(kv => new BlockAttribute { Tag = kv.Key, Value = kv.Value }).ToList()
+                            ?? new List<BlockAttribute>()
                     };
+                    blockDataResult.Blocks.Add(blockData);
                 }
 
                 var pos = Plugin._pendingInsertPoint ?? new Point3d(0, 0, 0);
-                var tableId = _generator.GenerateTable(sortedBlocks, _currentStyle, mergeConfig, pos, targetLayout);
+
+                // 调用真正的 Generate 方法生成带网格线的目录实体
+                var entities = _generator.Generate(blockDataResult, _currentStyle, pos, targetLayout);
+
+                // 将实体写入 CAD 图纸数据库
+                var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+                if (doc != null)
+                {
+                    using (var docLock = doc.LockDocument())
+                    using (var tr = doc.Database.TransactionManager.StartTransaction())
+                    {
+                        // 获取目标空间（模型空间或布局）
+                        BlockTableRecord ms;
+                        if (!string.IsNullOrEmpty(targetLayout))
+                        {
+                            var bt = (BlockTable)tr.GetObject(doc.Database.BlockTableId, OpenMode.ForRead);
+                            var btr = (BlockTableRecord)tr.GetObject(bt[targetLayout], OpenMode.ForRead);
+                            ms = (BlockTableRecord)tr.GetObject(btr.Id, OpenMode.ForWrite);
+                        }
+                        else
+                        {
+                            ms = (BlockTableRecord)tr.GetObject(doc.Database.CurrentSpaceId, OpenMode.ForWrite);
+                        }
+
+                        // 将所有生成的实体添加到图纸
+                        foreach (var entity in entities)
+                        {
+                            ms.AppendEntity(entity);
+                            tr.AddNewlyCreatedDBObject(entity, true);
+                        }
+
+                        tr.Commit();
+                    }
+                }
+
                 AppendLog("目录已生成", Theme.Success);
             }
             catch (Exception ex)
