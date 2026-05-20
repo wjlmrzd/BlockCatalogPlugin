@@ -572,16 +572,6 @@ namespace BlockCatalogPlugin
         }
 
         /// <summary>
-        /// 从BlockData获取属性值
-        /// </summary>
-        private string GetBlockAttribute(BlockData block, string tag)
-        {
-            if (block == null || string.IsNullOrEmpty(tag)) return "";
-            var attr = block.Attributes.FirstOrDefault(a => a.Tag.Equals(tag, StringComparison.OrdinalIgnoreCase));
-            return attr?.Value ?? "";
-        }
-
-        /// <summary>
         /// 从AttributeBlockData获取属性值（兼容旧API）
         /// </summary>
         private string GetAttributeBlockAttribute(AttributeBlockData block, string tag)
