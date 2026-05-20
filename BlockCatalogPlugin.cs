@@ -137,32 +137,61 @@ namespace BlockCatalogPlugin
         /// <summary>
         /// 选择属性块命令 - 从UI按钮触发
         /// </summary>
-        [CommandMethod("_BCSELECT", CommandFlags.Modal)]
+        [CommandMethod("_BCSELECT", CommandFlags.Modal | CommandFlags.UsePickSet)]
         public void BcSelect()
         {
             var doc = Application.DocumentManager.MdiActiveDocument;
-            if (doc == null || Plugin._panel == null) return;
+            if (doc == null) return;
+            if (Plugin._panel == null)
+            {
+                doc.Editor.WriteMessage("\n面板未初始化，请先输入 BLOCKCATALOG 打开面板");
+                return;
+            }
 
             var ed = doc.Editor;
             var filter = new SelectionFilter(new TypedValue[] { new TypedValue(0, "INSERT") });
-            var pr = ed.GetSelection(filter);
+            PromptSelectionResult pr;
+            try
+            {
+                pr = ed.GetSelection(filter);
+            }
+            catch (System.Exception ex)
+            {
+                ed.WriteMessage($"\n选择失败: {ex.Message}");
+                return;
+            }
 
             if (pr.Status == PromptStatus.OK && pr.Value != null)
             {
+                ExtractionResult result;
                 try
                 {
                     var extractor = new BlockExtractor();
-                    var result = extractor.ExtractFromSelection(pr.Value);
-                    Plugin._panel.SafeInvoke(() => Plugin._panel.OnBlocksSelected(result));
+                    result = extractor.ExtractFromSelection(pr.Value);
                 }
                 catch (System.Exception ex)
                 {
                     ed.WriteMessage($"\n提取属性块失败: {ex.Message}");
+                    return;
                 }
+
+                // 直接在 CAD 线程上调用，不跨线程
+                try
+                {
+                    Plugin._panel.OnBlocksSelected(result);
+                }
+                catch (System.Exception ex)
+                {
+                    ed.WriteMessage($"\n刷新面板失败: {ex.Message}");
+                }
+            }
+            else if (pr.Status == PromptStatus.Cancel)
+            {
+                // 用户按 ESC 取消，不提示
             }
             else
             {
-                Plugin._panel.SafeInvoke(() => Plugin._panel.AppendLog("未选择到属性块", BlockCatalogPlugin.UI.Theme.Warning));
+                Plugin._panel.AppendLog("未选择到属性块", BlockCatalogPlugin.UI.Theme.Warning);
             }
         }
 

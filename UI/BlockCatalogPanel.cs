@@ -85,6 +85,7 @@ namespace BlockCatalogPlugin.UI
         private int _dragRowIndex = -1;
         private Point _dragStartPoint;
         private bool _isDragging = false;
+        private bool _isUpdatingFilter = false;
 
         public BlockCatalogPanel()
         {
@@ -818,6 +819,7 @@ namespace BlockCatalogPlugin.UI
 
         private void FilterBlocksByName()
         {
+            if (_isUpdatingFilter) return;
             if (_currentResult == null || dgvBlocks == null) return;
 
             string selectedFilter = cmbBlockNameFilter?.SelectedItem?.ToString() ?? "(全部)";
@@ -855,6 +857,7 @@ namespace BlockCatalogPlugin.UI
 
             string currentSelection = cmbBlockNameFilter.SelectedItem?.ToString() ?? "(全部)";
 
+            _isUpdatingFilter = true;
             cmbBlockNameFilter.Items.Clear();
             cmbBlockNameFilter.Items.Add("(全部)");
 
@@ -865,6 +868,7 @@ namespace BlockCatalogPlugin.UI
                 cmbBlockNameFilter.SelectedItem = currentSelection;
             else
                 cmbBlockNameFilter.SelectedIndex = 0;
+            _isUpdatingFilter = false;
         }
 
         private void DgvBlocks_MouseDown(object sender, MouseEventArgs e)
