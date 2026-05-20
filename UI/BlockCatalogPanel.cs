@@ -539,21 +539,23 @@ namespace BlockCatalogPlugin.UI
             {
                 Text = "列宽表达式与表格参数",
                 Location = new Point(leftX, curY),
-                Size = new Size(boxW, 215),  // 增大高度以容纳列管理控件
+                Size = new Size(boxW, 230),  // 适当高度
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
                 FlatStyle = FlatStyle.Flat
             };
 
-            // === 子区域：列管理 ===
-            var lblColMgr = new Label { Text = "列管理:", Location = new Point(12, 18), AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F, FontStyle.Bold) };
+            // === 第一行：列管理标签 ===
+            int row1Y = 20;
+            var lblColMgr = new Label { Text = "列管理:", Location = new Point(12, row1Y), AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F, FontStyle.Bold) };
             grpFormula.Controls.Add(lblColMgr);
 
-            // 列选择下拉框（用于添加新列，使用字段引用）
+            // === 第二行：下拉框 + 按钮 ===
+            int row2Y = 40;
             cmbAddColumn = new ComboBox
             {
-                Location = new Point(12, 38),
-                Width = 100,
+                Location = new Point(12, row2Y),
+                Width = 90,
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Theme.InputBg,
@@ -569,8 +571,9 @@ namespace BlockCatalogPlugin.UI
             cmbAddColumn.SelectedIndex = 0;
             grpFormula.Controls.Add(cmbAddColumn);
 
-            var btnAddColumn = CreateFlatButton("增加列", 120, 36, 55, Theme.Success);
-            btnAddColumn.Height = 20;
+            int btnX = 108;
+            var btnAddColumn = CreateFlatButton("增加列", btnX, row2Y - 2, 50, Theme.Success);
+            btnAddColumn.Height = 22;
             btnAddColumn.Click += (s, e) =>
             {
                 if (cmbAddColumn.SelectedItem != null)
@@ -584,46 +587,51 @@ namespace BlockCatalogPlugin.UI
             };
             grpFormula.Controls.Add(btnAddColumn);
 
-            var btnRemoveColumn = CreateFlatButton("删除列", 180, 36, 55, Theme.Warning);
-            btnRemoveColumn.Height = 20;
+            btnX += 55;
+            var btnRemoveColumn = CreateFlatButton("删除列", btnX, row2Y - 2, 50, Theme.Warning);
+            btnRemoveColumn.Height = 22;
             btnRemoveColumn.Click += (s, e) => RemoveSelectedColumn();
             grpFormula.Controls.Add(btnRemoveColumn);
 
-            var btnColUp = CreateFlatButton("▲", 240, 36, 28, Theme.Primary);
-            btnColUp.Height = 20;
+            btnX += 55;
+            var btnColUp = CreateFlatButton("▲", btnX, row2Y - 2, 24, Theme.Primary);
+            btnColUp.Height = 22;
             btnColUp.Click += (s, e) => MoveColumnUp();
             grpFormula.Controls.Add(btnColUp);
 
-            var btnColDown = CreateFlatButton("▼", 270, 36, 28, Theme.Primary);
-            btnColDown.Height = 20;
+            btnX += 27;
+            var btnColDown = CreateFlatButton("▼", btnX, row2Y - 2, 24, Theme.Primary);
+            btnColDown.Height = 22;
             btnColDown.Click += (s, e) => MoveColumnDown();
             grpFormula.Controls.Add(btnColDown);
 
-            // 当前列 ListBox（使用字段引用）
+            // === 第三行：列列表 ===
+            int row3Y = 65;
             lstColumns = new ListBox
             {
-                Location = new Point(12, 60),
-                Size = new Size(290, 55),
+                Location = new Point(12, row3Y),
+                Size = new Size(288, 50),  // 288 < 312 - 12*2 = 288, fits within groupbox
                 BackColor = Theme.InputBg,
                 ForeColor = Theme.Text,
                 Font = new Font("Consolas", 8F),
                 BorderStyle = BorderStyle.FixedSingle
             };
-            lstColumns.SelectedIndexChanged += (s, e) => { /* 可选中列进行操作 */ };
             grpFormula.Controls.Add(lstColumns);
 
             // === 分隔线 ===
-            var sepLine = new Panel { Location = new Point(12, 120), Size = new Size(290, 1), BackColor = Theme.Border };
+            int sepY = 120;
+            var sepLine = new Panel { Location = new Point(12, sepY), Size = new Size(288, 1), BackColor = Theme.Border };
             grpFormula.Controls.Add(sepLine);
 
-            // === 子区域：列宽与行高 ===
-            var lblForm = new Label { Text = "列宽公式:", Location = new Point(12, 128), AutoSize = true, ForeColor = Theme.TextDim };
+            // === 第四行：列宽公式 ===
+            int row4Y = 128;
+            var lblForm = new Label { Text = "公式:", Location = new Point(12, row4Y + 2), AutoSize = true, ForeColor = Theme.TextDim };
             grpFormula.Controls.Add(lblForm);
 
             txtColumnFormula = new TextBox
             {
-                Location = new Point(62, 126),
-                Width = 130,
+                Location = new Point(45, row4Y),
+                Width = 120,
                 BackColor = Theme.InputBg,
                 ForeColor = Theme.Text,
                 BorderStyle = BorderStyle.FixedSingle,
@@ -632,46 +640,51 @@ namespace BlockCatalogPlugin.UI
             };
             grpFormula.Controls.Add(txtColumnFormula);
 
-            var btnApplyForm = CreateFlatButton("应用", 198, 124, 40, Theme.Primary);
-            btnApplyForm.Height = 18;
+            int formBtnX = 170;
+            var btnApplyForm = CreateFlatButton("应用", formBtnX, row4Y - 2, 38, Theme.Primary);
+            btnApplyForm.Height = 20;
             btnApplyForm.Click += (s, e) => ApplyColumnFormula();
             grpFormula.Controls.Add(btnApplyForm);
 
-            var btnGetForm = CreateFlatButton("获取", 242, 124, 40, Theme.Accent);
-            btnGetForm.Height = 18;
+            formBtnX += 43;
+            var btnGetForm = CreateFlatButton("获取", formBtnX, row4Y - 2, 38, Theme.Accent);
+            btnGetForm.Height = 20;
             btnGetForm.Click += (s, e) => txtColumnFormula.Text = _currentStyle.GetFormulaWidths();
             grpFormula.Controls.Add(btnGetForm);
 
-            var btnPickColWidth = CreateFlatButton("拖拽获取列宽", 286, 124, 62, Theme.AccentLight);
-            btnPickColWidth.Height = 18;
+            formBtnX += 43;
+            var btnPickColWidth = CreateFlatButton("拖拽列宽", formBtnX, row4Y - 2, 44, Theme.AccentLight);
+            btnPickColWidth.Height = 20;
             btnPickColWidth.Click += (s, e) => StartPickColumnWidthMode();
             grpFormula.Controls.Add(btnPickColWidth);
 
-            // 字高和行高
-            var lblFontH = new Label { Text = "字高", Location = new Point(12, 150), AutoSize = true, ForeColor = Theme.TextDim };
+            // === 第五行：字高、行高、表头 ===
+            int row5Y = 152;
+            var lblFontH = new Label { Text = "字高", Location = new Point(12, row5Y + 2), AutoSize = true, ForeColor = Theme.TextDim };
             grpFormula.Controls.Add(lblFontH);
-            numFontHeight = new NumericUpDown { Location = new Point(45, 148), Width = 45, Minimum = 1, Maximum = 20, Value = 3.5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
+            numFontHeight = new NumericUpDown { Location = new Point(45, row5Y), Width = 40, Minimum = 1, Maximum = 20, Value = 3.5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
             grpFormula.Controls.Add(numFontHeight);
 
-            var lblRowH = new Label { Text = "行高", Location = new Point(100, 150), AutoSize = true, ForeColor = Theme.TextDim };
+            var lblRowH = new Label { Text = "行高", Location = new Point(95, row5Y + 2), AutoSize = true, ForeColor = Theme.TextDim };
             grpFormula.Controls.Add(lblRowH);
-            numRowHeight = new NumericUpDown { Location = new Point(132, 148), Width = 45, Minimum = 1, Maximum = 50, Value = 5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
+            numRowHeight = new NumericUpDown { Location = new Point(128, row5Y), Width = 40, Minimum = 1, Maximum = 50, Value = 5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
             grpFormula.Controls.Add(numRowHeight);
 
-            chkShowHeader = new CheckBox { Text = "表头", Location = new Point(185, 149), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            chkShowHeader = new CheckBox { Text = "表头", Location = new Point(180, row5Y + 2), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
             grpFormula.Controls.Add(chkShowHeader);
 
-            // 目标空间
-            var lblOut = new Label { Text = "目标:", Location = new Point(12, 175), AutoSize = true, ForeColor = Theme.TextDim };
+            // === 第六行：目标空间 + 拖拽尺寸按钮 ===
+            int row6Y = 180;
+            var lblOut = new Label { Text = "目标:", Location = new Point(12, row6Y + 2), AutoSize = true, ForeColor = Theme.TextDim };
             grpFormula.Controls.Add(lblOut);
-            radModelSpace = new RadioButton { Text = "模型", Location = new Point(48, 173), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            radModelSpace = new RadioButton { Text = "模型", Location = new Point(48, row6Y), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
             grpFormula.Controls.Add(radModelSpace);
-            radLayout = new RadioButton { Text = "布局", Location = new Point(90, 173), AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            radLayout = new RadioButton { Text = "布局", Location = new Point(90, row6Y), AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card };
             grpFormula.Controls.Add(radLayout);
             cmbLayoutName = new ComboBox
             {
-                Location = new Point(125, 171),
-                Width = 70,
+                Location = new Point(120, row6Y - 2),
+                Width = 65,
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 FlatStyle = FlatStyle.Flat,
                 Enabled = false,
@@ -683,9 +696,8 @@ namespace BlockCatalogPlugin.UI
             radLayout.CheckedChanged += (s, e) => { cmbLayoutName.Enabled = radLayout.Checked; };
             grpFormula.Controls.Add(cmbLayoutName);
 
-            // 鼠标拖拽定义尺寸按钮
-            var btnPickDimSize = CreateFlatButton("拖拽获取尺寸", 200, 169, 70, Theme.Primary);
-            btnPickDimSize.Height = 20;
+            var btnPickDimSize = CreateFlatButton("拖拽获取尺寸", 200, row6Y - 2, 80, Theme.Primary);
+            btnPickDimSize.Height = 22;
             btnPickDimSize.Click += (s, e) =>
             {
                 var style = GetCurrentStyle();
@@ -696,7 +708,7 @@ namespace BlockCatalogPlugin.UI
             grpFormula.Controls.Add(btnPickDimSize);
 
             _canvasPanel.Controls.Add(grpFormula);
-            curY += 225;
+            curY += 240;
 
             // === 间距公式 ===
             var lblSpace = new Label { Text = "间距公式:", Location = new Point(leftX + 6, curY + 4), AutoSize = true, ForeColor = Theme.TextDim };
@@ -1126,7 +1138,7 @@ namespace BlockCatalogPlugin.UI
             }
             else
             {
-                var filteredBlocks = _currentResult.Blocks.Where(b => b.BlockName == selectedFilter).ToList();
+                var filteredBlocks = _currentResult.Blocks.Where(b => string.Equals(b.BlockName, selectedFilter, StringComparison.OrdinalIgnoreCase)).ToList();
                 dgvBlocks.DataSource = null;
                 dgvBlocks.Columns.Clear();
 
@@ -1140,7 +1152,8 @@ namespace BlockCatalogPlugin.UI
                 // 使用 BlockRowData 包装，保留原始索引以支持正确的删除/移动操作
                 _currentBlockRows = filteredBlocks.Select((b, idx) => new BlockRowData
                 {
-                    OriginalIndex = idx,
+                    // 找到该块在原始列表中的索引
+                    OriginalIndex = _currentResult.Blocks.IndexOf(b),
                     块名 = b.BlockName,
                     图号 = GetAttributeMulti(b, "图号", "编号", "TH", "XH", "BH", "DRAWING_NO") ?? "",
                     图名 = GetAttributeMulti(b, "图名", "NAME", "TM", "DRAWINGNAME", "TNAME") ?? "",
