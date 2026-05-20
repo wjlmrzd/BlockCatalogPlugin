@@ -34,8 +34,58 @@ namespace BlockCatalogPlugin
 
             TemplateManager.Instance.CreatePresetTemplates();
 
+            // 注册快捷键别名
+            RegisterShortcutKey();
+
             Editor ed = Application.DocumentManager.MdiActiveDocument?.Editor;
-            ed?.WriteMessage("\n✔ 目录生成插件 V2.0 已加载 | 命令: BLOCKCATALOG");
+            string shortcut = PreferencesManager.Instance.Preferences.ShortcutKey ?? "bca";
+            ed?.WriteMessage($"\n✔ 目录生成插件 V2.0 已加载 | 命令: BLOCKCATALOG | 快捷键: {shortcut}");
+        }
+
+        /// <summary>
+        /// 注册快捷键别名到 AutoCAD（使用别名命令）
+        /// </summary>
+        internal static void RegisterShortcutKey()
+        {
+            try
+            {
+                string shortcut = PreferencesManager.Instance.Preferences.ShortcutKey ?? "bca";
+                // 验证快捷键只包含有效字符
+                if (!IsValidShortcutKey(shortcut))
+                {
+                    shortcut = "bca"; // 默认值
+                }
+
+                var doc = Application.DocumentManager.MdiActiveDocument;
+                if (doc == null) return;
+
+                // 删除旧别名（如果有）并添加新别名
+                // 使用 -alias 命令：-alias delete <shortcut> | -alias add <shortcut> *BLOCKCATALOG
+                string deleteCmd = $"-alias delete {shortcut} ";
+                string addCmd = $"-alias add {shortcut} *BLOCKCATALOG ";
+
+                doc.SendStringToExecute(deleteCmd, true, false, true);
+                doc.SendStringToExecute(addCmd, true, false, true);
+
+                doc.Editor.WriteMessage($"\n快捷键别名 '{shortcut}' 已注册到 BLOCKCATALOG");
+            }
+            catch (System.Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"注册快捷键失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 验证快捷键是否有效（只允许字母和数字）
+        /// </summary>
+        private static bool IsValidShortcutKey(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key)) return false;
+            foreach (char c in key)
+            {
+                if (!char.IsLetterOrDigit(c)) return false;
+            }
+            return true;
         }
 
         public void Terminate()
@@ -66,6 +116,8 @@ namespace BlockCatalogPlugin
                     _ps.Add("目录生成", _panel);
                 }
                 _ps.Visible = true;
+                // 必须等 Visible=true 之后设置 Size，CAD 布局管理器才会服从
+                _ps.Size = new System.Drawing.Size(360, 800);
             }
             catch (System.Exception ex)
             {

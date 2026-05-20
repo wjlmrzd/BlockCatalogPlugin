@@ -125,7 +125,7 @@ namespace BlockCatalogPlugin
             var data = new AttributeBlockData
             {
                 BlockId = br.Id,
-                BlockName = btr.Name,
+                BlockName = btr.Name, // 动态块匿名名在 2014 环境下需通过 BlockTableRecord 获取
                 Position = br.Position,
                 SelectionOrder = order
             };

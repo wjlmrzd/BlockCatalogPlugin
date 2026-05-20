@@ -131,7 +131,7 @@ namespace BlockCatalogPlugin
                             {
                                 x += colWidths[c - 1];
                                 var tag = visibleCols[c - 1]?.Tag;
-                                string value = tag != null ? (block.GetAttribute(tag) ?? "") : "";
+                                string value = tag != null ? GetAttrBlockAttributeMulti(block, tag) : "";
                                 InsertText(tr, targetBtr, value, new Point3d(x, y, 0), style.FontHeight, false);
                             }
                             y -= style.RowHeight;  // 每行向下移动
@@ -437,7 +437,7 @@ namespace BlockCatalogPlugin
                 {
                     x += colWidths[c - 1];
                     var tag = visibleCols[c - 1]?.Tag;
-                    string value = tag != null ? block.GetAttribute(tag) ?? "" : "";
+                    string value = tag != null ? GetAttrBlockAttributeMulti(block, tag) : "";
                     entities.Add(CreateText(value, new Point3d(x + 2, rowTextY, 0), textHeight, false));
                 }
 
@@ -506,6 +506,76 @@ namespace BlockCatalogPlugin
         private string GetAttributeBlockAttribute(AttributeBlockData block, string tag)
         {
             return block?.GetAttribute(tag) ?? "";
+        }
+
+        /// <summary>
+        /// 多标签查找 - 尝试多个标签名，返回第一个找到的非空值
+        /// 支持中英文标签别名映射
+        /// </summary>
+        private string GetBlockAttributeMulti(BlockData block, string primaryTag)
+        {
+            // 标签别名映射：列定义标签 -> 实际可能存在的标签列表
+            var tagAliases = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "XH", new[] { "XH", "TH", "BH", "图号", "编号", "DRAWING_NO", "图纸编号" } },
+                { "TH", new[] { "TH", "XH", "BH", "图号", "编号", "DRAWING_NO", "图纸编号" } },
+                { "TM", new[] { "TM", "图名", "NAME", "DRAWINGNAME", "TNAME", "图纸名称" } },
+                { "BLM", new[] { "BLM", "BL", "比例", "SCALE", "缩放比例" } },
+                { "FM", new[] { "FM", "幅面", "SIZE", "图纸幅面" } },
+            };
+
+            // 尝试主标签
+            var val = block.GetAttribute(primaryTag);
+            if (!string.IsNullOrEmpty(val)) return val;
+
+            // 尝试别名映射
+            if (tagAliases.TryGetValue(primaryTag, out var aliases))
+            {
+                foreach (var alias in aliases)
+                {
+                    val = block.GetAttribute(alias);
+                    if (!string.IsNullOrEmpty(val)) return val;
+                }
+            }
+
+            // 尝试直接遍历所有属性（兜底）
+            foreach (var attr in block.Attributes)
+            {
+                if (!string.IsNullOrEmpty(attr.Value)) return attr.Value;
+            }
+
+            return "";
+        }
+
+        /// <summary>
+        /// 多标签查找 - 用于 AttributeBlockData 类型
+        /// </summary>
+        private string GetAttrBlockAttributeMulti(AttributeBlockData block, string primaryTag)
+        {
+            var tagAliases = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "XH", new[] { "XH", "TH", "BH", "图号", "编号", "DRAWING_NO", "图纸编号" } },
+                { "TH", new[] { "TH", "XH", "BH", "图号", "编号", "DRAWING_NO", "图纸编号" } },
+                { "TM", new[] { "TM", "图名", "NAME", "DRAWINGNAME", "TNAME", "图纸名称" } },
+                { "BLM", new[] { "BLM", "BL", "比例", "SCALE", "缩放比例" } },
+                { "FM", new[] { "FM", "幅面", "SIZE", "图纸幅面" } },
+            };
+
+            // 尝试主标签
+            var val = block.GetAttribute(primaryTag);
+            if (!string.IsNullOrEmpty(val)) return val;
+
+            // 尝试别名映射
+            if (tagAliases.TryGetValue(primaryTag, out var aliases))
+            {
+                foreach (var alias in aliases)
+                {
+                    val = block.GetAttribute(alias);
+                    if (!string.IsNullOrEmpty(val)) return val;
+                }
+            }
+
+            return "";
         }
 
     }

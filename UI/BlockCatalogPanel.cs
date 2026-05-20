@@ -86,6 +86,12 @@ namespace BlockCatalogPlugin.UI
         private Point _dragStartPoint;
         private bool _isDragging = false;
         private bool _isUpdatingFilter = false;
+        private double _sortTolerance = 500.0; // 排序容差，默认500
+        private CheckBox chkMergeSameName; // 合并相同前缀的图名/图号
+
+        // 列宽/行高拖拽相关
+        private bool _isResizingColumn = false;
+        private bool _isResizingRow = false;
 
         public BlockCatalogPanel()
         {
@@ -148,6 +154,68 @@ namespace BlockCatalogPlugin.UI
                 e.Graphics.DrawString("图框目录工具", _headerTitleFont, _headerTitleBrush, 12, 8);
                 e.Graphics.DrawString("全总控看板 V3.0 (固定版)", _headerVerFont, _headerVerBrush, 12, 28);
             };
+
+            // 快捷键配置
+            var lblShortcut = new Label
+            {
+                Text = "快捷键:",
+                Location = new Point(200, 8),
+                AutoSize = true,
+                Font = new Font("Microsoft YaHei UI", 8F),
+                ForeColor = Theme.TextDim
+            };
+            var txtShortcut = new TextBox
+            {
+                Text = _preferences.ShortcutKey ?? "bca",
+                Location = new Point(238, 5),
+                Width = 45,
+                Height = 18,
+                Font = new Font("Consolas", 8F),
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.TextBright,
+                BorderStyle = BorderStyle.FixedSingle,
+                TextAlign = HorizontalAlignment.Center
+            };
+            txtShortcut.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Enter)
+                {
+                    string key = txtShortcut.Text.Trim().ToLower();
+                    // 验证：只允许字母和数字
+                    if (IsValidShortcutKey(key) && key.Length <= 10 && key.Length >= 1)
+                    {
+                        _preferences.ShortcutKey = key;
+                        PreferencesManager.Instance.Save();
+                        // 重新注册快捷键
+                        Plugin.RegisterShortcutKey();
+                        AppendLog($"快捷键已保存并注册: {key}", Theme.Success);
+                    }
+                    else
+                    {
+                        AppendLog($"快捷键无效（仅支持字母和数字）", Theme.Error);
+                        txtShortcut.Text = _preferences.ShortcutKey ?? "bca";
+                    }
+                    txtShortcut.SelectAll();
+                }
+            };
+            txtShortcut.LostFocus += (s, e) =>
+            {
+                string key = txtShortcut.Text.Trim().ToLower();
+                // 验证：只允许字母和数字
+                if (IsValidShortcutKey(key) && key.Length <= 10 && key.Length >= 1)
+                {
+                    _preferences.ShortcutKey = key;
+                    PreferencesManager.Instance.Save();
+                    // 重新注册快捷键
+                    Plugin.RegisterShortcutKey();
+                }
+                else
+                {
+                    txtShortcut.Text = _preferences.ShortcutKey ?? "bca";
+                }
+            };
+            headerPanel.Controls.Add(lblShortcut);
+            headerPanel.Controls.Add(txtShortcut);
             Controls.Add(headerPanel);
 
             // === Canvas ===
@@ -257,7 +325,7 @@ namespace BlockCatalogPlugin.UI
             {
                 Text = "空间矩阵排序模式",
                 Location = new Point(leftX, curY),
-                Size = new Size(boxW, 75),
+                Size = new Size(boxW, 100),
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
                 FlatStyle = FlatStyle.Flat
@@ -283,7 +351,7 @@ namespace BlockCatalogPlugin.UI
             radSortSelection = new RadioButton
             {
                 Text = "选择序",
-                Location = new Point(180, 20),
+                Location = new Point(120, 20),
                 AutoSize = true,
                 ForeColor = Theme.Text,
                 BackColor = Theme.Card
@@ -291,7 +359,7 @@ namespace BlockCatalogPlugin.UI
             radSortNumeric = new RadioButton
             {
                 Text = "数值序",
-                Location = new Point(180, 44),
+                Location = new Point(120, 44),
                 AutoSize = true,
                 ForeColor = Theme.Text,
                 BackColor = Theme.Card
@@ -299,27 +367,50 @@ namespace BlockCatalogPlugin.UI
             chkReverse = new CheckBox
             {
                 Text = "反序",
-                Location = new Point(252, 20),
+                Location = new Point(210, 20),
                 AutoSize = true,
                 ForeColor = Theme.Warning,
                 BackColor = Theme.Card
             };
 
-            grpSort.Controls.Add(radSortTB_LR);
-            grpSort.Controls.Add(radSortLR_TB);
-            grpSort.Controls.Add(radSortSelection);
-            grpSort.Controls.Add(radSortNumeric);
-            grpSort.Controls.Add(chkReverse);
+            var lblTolerance = new Label
+            {
+                Text = "容差",
+                Location = new Point(210, 44),
+                AutoSize = true,
+                ForeColor = Theme.TextDim
+            };
+            var numTolerance = new NumericUpDown
+            {
+                Location = new Point(245, 42),
+                Width = 55,
+                Minimum = 10,
+                Maximum = 5000,
+                Value = 500,
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text
+            };
+            numTolerance.ValueChanged += (s, e) =>
+            {
+                // 存储容差值到 preferences 或直接使用
+                _sortTolerance = (double)numTolerance.Value;
+            };
+            _sortTolerance = 500; // 默认值
 
-            _canvasPanel.Controls.Add(grpSort);
-            curY += 85;
+            // 添加所有排序控件到分组
+            grpSort.Controls.AddRange(new Control[] {
+                radSortTB_LR, radSortLR_TB,
+                radSortSelection, radSortNumeric,
+                chkReverse, lblTolerance, numTolerance
+            });
+            _canvasPanel.Controls.Add(grpSort); curY += 110;
 
             // === Box 3: 图形缓冲区与手动调序 ===
             var grpBuffer = new GroupBox
             {
                 Text = "图形缓冲区与手动调序",
                 Location = new Point(leftX, curY),
-                Size = new Size(boxW, 200),
+                Size = new Size(boxW, 260),  // 增大高度以显示更多预览行
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
                 FlatStyle = FlatStyle.Flat
@@ -347,7 +438,7 @@ namespace BlockCatalogPlugin.UI
             dgvBlocks = new DataGridView
             {
                 Location = new Point(12, 50),
-                Size = new Size(240, 138),
+                Size = new Size(240, 198),  // 增大高度，从138增至198，可显示更多预览行
                 BackgroundColor = Theme.LogBg,
                 ForeColor = Theme.Text,
                 BorderStyle = BorderStyle.None,
@@ -358,8 +449,12 @@ namespace BlockCatalogPlugin.UI
                 ReadOnly = true,
                 RowHeadersVisible = false,
                 ColumnHeadersHeight = 24,
-                ScrollBars = ScrollBars.Vertical,
-                AllowDrop = true
+                ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.EnableResizing,
+                RowTemplate = { Height = 22 },  // 设置默认行高为22像素
+                ScrollBars = ScrollBars.Both,
+                AllowDrop = true,
+                AllowUserToResizeColumns = true,  // 允许用户拖拽调整列宽
+                AllowUserToResizeRows = true      // 允许用户拖拽调整行高
             };
             dgvBlocks.EnableHeadersVisualStyles = false;
             dgvBlocks.ColumnHeadersDefaultCellStyle.BackColor = Theme.CardHover;
@@ -372,6 +467,8 @@ namespace BlockCatalogPlugin.UI
             dgvBlocks.MouseUp += DgvBlocks_MouseUp;
             dgvBlocks.DragOver += DgvBlocks_DragOver;
             dgvBlocks.DragDrop += DgvBlocks_DragDrop;
+            dgvBlocks.ColumnWidthChanged += DgvBlocks_ColumnWidthChanged;
+            dgvBlocks.RowHeightChanged += DgvBlocks_RowHeightChanged;
 
             grpBuffer.Controls.Add(dgvBlocks);
 
@@ -384,13 +481,17 @@ namespace BlockCatalogPlugin.UI
             var btnMoveDown = CreateFlatButton("▼", 258, 120, 42, Theme.Primary);
             btnMoveDown.Height = 24;
             btnMoveDown.Click += (s, e) => MoveBlockDown();
+            var btnReselect = CreateFlatButton("重选", 258, 150, 42, Theme.Accent);  // 新增重选按钮
+            btnReselect.Height = 24;
+            btnReselect.Click += (s, e) => ReselectBlocks();
+            grpBuffer.Controls.Add(btnReselect);
 
             grpBuffer.Controls.Add(btnRemove);
             grpBuffer.Controls.Add(btnMoveUp);
             grpBuffer.Controls.Add(btnMoveDown);
 
             _canvasPanel.Controls.Add(grpBuffer);
-            curY += 210;
+            curY += 270;  // 调整以匹配新的 grpBuffer 高度(260)
 
             // === Box 4: 缀参数规律重编属性 ===
             var grpSuffix = new GroupBox
@@ -435,7 +536,7 @@ namespace BlockCatalogPlugin.UI
             {
                 Text = "列宽表达式与表格参数",
                 Location = new Point(leftX, curY),
-                Size = new Size(boxW, 115),
+                Size = new Size(boxW, 145),
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
                 FlatStyle = FlatStyle.Flat
@@ -488,8 +589,21 @@ namespace BlockCatalogPlugin.UI
 
             grpFormula.Controls.AddRange(new Control[] { lblOut, radModelSpace, radLayout, cmbLayoutName });
 
+            // 鼠标拖拽定义尺寸按钮
+            var btnPickDimSize = CreateFlatButton("鼠标拖拽定义行列高", 140, Theme.Primary);
+            btnPickDimSize.Location = new Point(12, 100);
+            btnPickDimSize.Height = 24;
+            btnPickDimSize.Click += (s, e) =>
+            {
+                var style = GetCurrentStyle();
+                style.UseMouseDefineSize = true;
+                AppendLog("请在CAD中拖拽定义表格尺寸...", Theme.Primary);
+                ExecuteCommand("_BCGENPOS");
+            };
+            grpFormula.Controls.Add(btnPickDimSize);
+
             _canvasPanel.Controls.Add(grpFormula);
-            curY += 125;
+            curY += 155;
 
             // === 间距公式 ===
             var lblSpace = new Label { Text = "间距公式:", Location = new Point(leftX + 6, curY + 4), AutoSize = true, ForeColor = Theme.TextDim };
@@ -505,6 +619,18 @@ namespace BlockCatalogPlugin.UI
             _canvasPanel.Controls.Add(lblSpace);
             _canvasPanel.Controls.Add(txtSpacingExpression);
             curY += 30;
+
+            // === 合并选项 ===
+            chkMergeSameName = new CheckBox
+            {
+                Text = "合并相同前缀的图名/图号",
+                Location = new Point(leftX, curY),
+                AutoSize = true,
+                ForeColor = Theme.Text,
+                BackColor = Theme.Bg
+            };
+            _canvasPanel.Controls.Add(chkMergeSameName);
+            curY += 28;
 
             // === 输出按钮 ===
             var btnPreview = CreateFlatButton("预览目录表格", boxW, Theme.Primary);
@@ -717,15 +843,46 @@ namespace BlockCatalogPlugin.UI
             radSortNumeric.Checked = index == 3;
         }
 
+        /// <summary>
+        /// 验证快捷键是否有效（只允许字母和数字）
+        /// </summary>
+        private bool IsValidShortcutKey(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key)) return false;
+            foreach (char c in key)
+            {
+                if (!char.IsLetterOrDigit(c)) return false;
+            }
+            return true;
+        }
+
         private string GetActiveTag()
         {
             if (_currentResult != null && _currentResult.Blocks.Count > 0)
             {
                 var firstBlock = _currentResult.Blocks[0];
-                if (firstBlock.GetAttribute("TH") != null) return "TH";
-                if (firstBlock.GetAttribute("图号") != null) return "图号";
+                // 尝试常见的图号标签名，返回第一个找到非空值的标签名
+                string[] tagCandidates = { "TH", "XH", "BH", "图号", "编号", "DRAWING_NO" };
+                foreach (var tag in tagCandidates)
+                {
+                    var val = firstBlock.GetAttribute(tag);
+                    if (!string.IsNullOrEmpty(val)) return tag;
+                }
             }
             return "XH";
+        }
+
+        /// <summary>
+        /// 尝试多个标签名，返回第一个找到的非空值
+        /// </summary>
+        private string GetAttributeMulti(AttributeBlockData block, params string[] tags)
+        {
+            foreach (var tag in tags)
+            {
+                var val = block.GetAttribute(tag);
+                if (!string.IsNullOrEmpty(val)) return val;
+            }
+            return null;
         }
 
         private class PanelSettings
@@ -745,48 +902,86 @@ namespace BlockCatalogPlugin.UI
             public bool OutputToLayout { get; set; } = false;
         }
 
+        /// <summary>
+        /// DataGridView 行包装类，包含原始块索引
+        /// </summary>
+        private class BlockRowData
+        {
+            public int OriginalIndex { get; set; }
+            public string 块名 { get; set; }
+            public string 图号 { get; set; }
+            public string 图名 { get; set; }
+            public string 比例 { get; set; }
+            public string 重编预览 { get; set; }
+        }
+
+        private List<BlockRowData> _currentBlockRows = new List<BlockRowData>();
+
         private void RemoveSelectedBlock()
         {
-            if (dgvBlocks.SelectedRows.Count > 0 && _currentResult != null)
+            if (dgvBlocks.SelectedRows.Count > 0 && _currentResult != null && _currentBlockRows.Count > 0)
             {
-                int idx = dgvBlocks.SelectedRows[0].Index;
-                if (idx >= 0 && idx < _currentResult.Blocks.Count)
+                int rowIdx = dgvBlocks.SelectedRows[0].Index;
+                if (rowIdx >= 0 && rowIdx < _currentBlockRows.Count)
                 {
-                    _currentResult.Blocks.RemoveAt(idx);
-                    RefreshDataGridView();
-                    AppendLog($"已删除第 {idx + 1} 行", Theme.Warning);
+                    // 使用 BlockRowData 中保存的原始索引
+                    int originalIdx = _currentBlockRows[rowIdx].OriginalIndex;
+                    if (originalIdx >= 0 && originalIdx < _currentResult.Blocks.Count)
+                    {
+                        _currentResult.Blocks.RemoveAt(originalIdx);
+                        RefreshDataGridView();
+                        AppendLog($"已删除第 {originalIdx + 1} 行", Theme.Warning);
+                    }
                 }
             }
         }
 
         private void MoveBlockUp()
         {
-            if (dgvBlocks.SelectedRows.Count > 0 && _currentResult != null)
+            if (dgvBlocks.SelectedRows.Count > 0 && _currentResult != null && _currentBlockRows.Count > 0)
             {
-                int idx = dgvBlocks.SelectedRows[0].Index;
-                if (idx > 0)
+                int rowIdx = dgvBlocks.SelectedRows[0].Index;
+                if (rowIdx > 0 && rowIdx < _currentBlockRows.Count)
                 {
-                    var temp = _currentResult.Blocks[idx];
-                    _currentResult.Blocks[idx] = _currentResult.Blocks[idx - 1];
-                    _currentResult.Blocks[idx - 1] = temp;
-                    RefreshDataGridView();
-                    dgvBlocks.Rows[idx - 1].Selected = true;
+                    // 使用原始索引进行交换
+                    int origIdx = _currentBlockRows[rowIdx].OriginalIndex;
+                    int prevOrigIdx = _currentBlockRows[rowIdx - 1].OriginalIndex;
+
+                    if (origIdx > 0 && origIdx < _currentResult.Blocks.Count &&
+                        prevOrigIdx >= 0 && prevOrigIdx < _currentResult.Blocks.Count)
+                    {
+                        var temp = _currentResult.Blocks[origIdx];
+                        _currentResult.Blocks[origIdx] = _currentResult.Blocks[prevOrigIdx];
+                        _currentResult.Blocks[prevOrigIdx] = temp;
+                        RefreshDataGridView();
+                        if (rowIdx - 1 >= 0 && rowIdx - 1 < dgvBlocks.Rows.Count)
+                            dgvBlocks.Rows[rowIdx - 1].Selected = true;
+                    }
                 }
             }
         }
 
         private void MoveBlockDown()
         {
-            if (dgvBlocks.SelectedRows.Count > 0 && _currentResult != null)
+            if (dgvBlocks.SelectedRows.Count > 0 && _currentResult != null && _currentBlockRows.Count > 0)
             {
-                int idx = dgvBlocks.SelectedRows[0].Index;
-                if (idx >= 0 && idx < _currentResult.Blocks.Count - 1)
+                int rowIdx = dgvBlocks.SelectedRows[0].Index;
+                if (rowIdx >= 0 && rowIdx < _currentBlockRows.Count - 1)
                 {
-                    var temp = _currentResult.Blocks[idx];
-                    _currentResult.Blocks[idx] = _currentResult.Blocks[idx + 1];
-                    _currentResult.Blocks[idx + 1] = temp;
-                    RefreshDataGridView();
-                    dgvBlocks.Rows[idx + 1].Selected = true;
+                    // 使用原始索引进行交换
+                    int origIdx = _currentBlockRows[rowIdx].OriginalIndex;
+                    int nextOrigIdx = _currentBlockRows[rowIdx + 1].OriginalIndex;
+
+                    if (origIdx >= 0 && origIdx < _currentResult.Blocks.Count &&
+                        nextOrigIdx >= 0 && nextOrigIdx < _currentResult.Blocks.Count)
+                    {
+                        var temp = _currentResult.Blocks[origIdx];
+                        _currentResult.Blocks[origIdx] = _currentResult.Blocks[nextOrigIdx];
+                        _currentResult.Blocks[nextOrigIdx] = temp;
+                        RefreshDataGridView();
+                        if (rowIdx + 1 >= 0 && rowIdx + 1 < dgvBlocks.Rows.Count)
+                            dgvBlocks.Rows[rowIdx + 1].Selected = true;
+                    }
                 }
             }
         }
@@ -806,13 +1001,21 @@ namespace BlockCatalogPlugin.UI
 
             var previewValues = _suffixEngine.GenerateNumberSequence(_currentResult.Blocks.Count, prefix, suffix, startNum, numLength);
 
-            dgvBlocks.DataSource = _currentResult.Blocks.Select((b, idx) => new
+            // 使用 BlockRowData 包装，保存原始索引
+            _currentBlockRows = _currentResult.Blocks.Select((b, idx) => new BlockRowData
             {
+                OriginalIndex = idx,
                 块名 = b.BlockName,
-                图号 = b.GetAttribute("XH") ?? b.GetAttribute("TH") ?? "",
-                图名 = b.GetAttribute("TM") ?? "",
+                图号 = GetAttributeMulti(b, "图号", "编号", "TH", "XH", "BH", "DRAWING_NO") ?? "",
+                图名 = GetAttributeMulti(b, "图名", "NAME", "TM", "DRAWINGNAME", "TNAME") ?? "",
+                比例 = GetAttributeMulti(b, "比例", "BL", "SCALE", "缩放比例") ?? "",
                 重编预览 = idx < previewValues.Count ? previewValues[idx] : ""
             }).ToList();
+
+            dgvBlocks.DataSource = _currentBlockRows;
+
+            // 设置列宽以支持横向滚动
+            dgvBlocks.AutoResizeColumns(DataGridViewAutoSizeColumnsMode.DisplayedCells);
 
             RefreshBlockNameFilter();
         }
@@ -841,13 +1044,21 @@ namespace BlockCatalogPlugin.UI
                 string suffix = txtSuffixSuffix.Text ?? "";
                 var previewValues = _suffixEngine.GenerateNumberSequence(filteredBlocks.Count, prefix, suffix, startNum, numLength);
 
-                dgvBlocks.DataSource = filteredBlocks.Select((b, idx) => new
+                // 使用 BlockRowData 包装，保留原始索引以支持正确的删除/移动操作
+                _currentBlockRows = filteredBlocks.Select((b, idx) => new BlockRowData
                 {
+                    OriginalIndex = idx,
                     块名 = b.BlockName,
-                    图号 = b.GetAttribute("XH") ?? b.GetAttribute("TH") ?? "",
-                    图名 = b.GetAttribute("TM") ?? "",
+                    图号 = GetAttributeMulti(b, "图号", "编号", "TH", "XH", "BH", "DRAWING_NO") ?? "",
+                    图名 = GetAttributeMulti(b, "图名", "NAME", "TM", "DRAWINGNAME", "TNAME") ?? "",
+                    比例 = GetAttributeMulti(b, "比例", "BL", "SCALE", "缩放比例") ?? "",
                     重编预览 = idx < previewValues.Count ? previewValues[idx] : ""
                 }).ToList();
+
+                dgvBlocks.DataSource = _currentBlockRows;
+
+                // 设置列宽以支持横向滚动
+                dgvBlocks.AutoResizeColumns(DataGridViewAutoSizeColumnsMode.DisplayedCells);
             }
         }
 
@@ -858,17 +1069,23 @@ namespace BlockCatalogPlugin.UI
             string currentSelection = cmbBlockNameFilter.SelectedItem?.ToString() ?? "(全部)";
 
             _isUpdatingFilter = true;
-            cmbBlockNameFilter.Items.Clear();
-            cmbBlockNameFilter.Items.Add("(全部)");
+            try
+            {
+                cmbBlockNameFilter.Items.Clear();
+                cmbBlockNameFilter.Items.Add("(全部)");
 
-            var distinctNames = _currentResult.Blocks.Select(b => b.BlockName).Distinct().OrderBy(n => n).ToList();
-            cmbBlockNameFilter.Items.AddRange(distinctNames.ToArray());
+                var distinctNames = _currentResult.Blocks.Select(b => b.BlockName).Distinct().OrderBy(n => n).ToList();
+                cmbBlockNameFilter.Items.AddRange(distinctNames.ToArray());
 
-            if (!string.IsNullOrEmpty(currentSelection) && cmbBlockNameFilter.Items.Contains(currentSelection))
-                cmbBlockNameFilter.SelectedItem = currentSelection;
-            else
-                cmbBlockNameFilter.SelectedIndex = 0;
-            _isUpdatingFilter = false;
+                if (!string.IsNullOrEmpty(currentSelection) && cmbBlockNameFilter.Items.Contains(currentSelection))
+                    cmbBlockNameFilter.SelectedItem = currentSelection;
+                else
+                    cmbBlockNameFilter.SelectedIndex = 0;
+            }
+            finally
+            {
+                _isUpdatingFilter = false;
+            }
         }
 
         private void DgvBlocks_MouseDown(object sender, MouseEventArgs e)
@@ -931,6 +1148,68 @@ namespace BlockCatalogPlugin.UI
 
             _dragRowIndex = -1;
             _isDragging = false;
+        }
+
+        /// <summary>
+        /// 列宽拖拽调整后触发 - 将调整后的列宽同步到样式配置
+        /// </summary>
+        private void DgvBlocks_ColumnWidthChanged(object sender, DataGridViewColumnEventArgs e)
+        {
+            if (dgvBlocks == null || _currentStyle?.Columns == null) return;
+            if (_isResizingColumn) return;
+            _isResizingColumn = true;
+
+            try
+            {
+                var visibleCols = _currentStyle.Columns.Where(c => c.Visible).OrderBy(c => c.Order).ToList();
+                int colIndex = e.Column.Index;
+
+                // 尝试将像素转换为 CAD 单位（约简：像素 * 0.5 作为粗略估算）
+                double widthInUnits = dgvBlocks.Columns[colIndex].Width * 0.5;
+                if (colIndex < visibleCols.Count)
+                {
+                    visibleCols[colIndex].Width = Math.Max(5, widthInUnits);
+                    // 更新公式文本框
+                    txtColumnFormula.Text = _currentStyle.GetFormulaWidths();
+                }
+            }
+            catch { }
+            finally
+            {
+                _isResizingColumn = false;
+            }
+        }
+
+        /// <summary>
+        /// 行高拖拽调整后触发 - 将调整后的行高同步到样式配置
+        /// </summary>
+        private void DgvBlocks_RowHeightChanged(object sender, DataGridViewRowEventArgs e)
+        {
+            if (dgvBlocks == null || _currentStyle == null) return;
+            if (_isResizingRow) return;
+            _isResizingRow = true;
+
+            try
+            {
+                // 将像素转换为 CAD 单位（约简：像素 * 0.5 作为粗略估算）
+                double heightInUnits = e.Row.Height * 0.5;
+                _currentStyle.RowHeight = Math.Max(2, heightInUnits);
+                numRowHeight.Value = (decimal)_currentStyle.RowHeight;
+            }
+            catch { }
+            finally
+            {
+                _isResizingRow = false;
+            }
+        }
+
+        /// <summary>
+        /// 重选块 - 清除当前数据并重新框选
+        /// </summary>
+        private void ReselectBlocks()
+        {
+            ClearData();
+            ExecuteCommand("_BCSELECT");
         }
 
         private void ApplyColumnFormula()
@@ -1081,16 +1360,199 @@ namespace BlockCatalogPlugin.UI
         {
             try
             {
+                // 应用当前排序模式，让缓冲区和输出保持一致
+                var sortType = GetSelectedSortType();
+                var sortedBlocks = _sortEngine.Sort(result.Blocks, sortType, _sortTolerance, chkReverse.Checked);
+
+                // 用排序后的块替换原始数据
+                result.Blocks.Clear();
+                result.Blocks.AddRange(sortedBlocks);
+
                 _currentResult = result;
                 _selectedBlockNames = result.Blocks.Select(b => b.BlockName).Distinct().ToList();
                 _selectedTags = result.AllTags.ToList();
                 RefreshDataGridView();
-                AppendLog($"已提取 {result.Blocks.Count} 个块", Theme.Success);
+                AppendLog($"已提取 {result.Blocks.Count} 个块（{GetSortTypeName(sortType)}）", Theme.Success);
             }
             catch (Exception ex)
             {
                 AppendLog($"处理提取结果失败: {ex.Message}", Theme.Error);
             }
+        }
+
+        private string GetSortTypeName(SortEngine.SortType sortType)
+        {
+            return sortType switch
+            {
+                SortEngine.SortType.LeftRight_TopBottom => "左右→上下",
+                SortEngine.SortType.TopBottom_LeftRight => "上下→左右",
+                SortEngine.SortType.SelectionOrder => "选择序",
+                SortEngine.SortType.NumericOrder => "数值序",
+                _ => "未知"
+            };
+        }
+
+        /// <summary>
+        /// 合并相同前缀的图名/图号
+        /// 例如：建施-01, 建施-02, 建施-03 → 建施-01~03
+        /// 例如：构造图(一)、构造图(二) → 构造图(一～二)
+        /// </summary>
+        private List<AttributeBlockData> MergeSamePrefixBlocks(List<AttributeBlockData> blocks)
+        {
+            if (blocks == null || blocks.Count <= 1) return blocks;
+
+            var result = new List<AttributeBlockData>();
+            var merged = new HashSet<int>();
+
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                if (merged.Contains(i)) continue;
+
+                var current = blocks[i];
+                var group = new List<AttributeBlockData> { current };
+                merged.Add(i);
+
+                // 获取当前块的图名和图号
+                string tmCurrent = GetAttributeMulti(current, "图名", "NAME", "TM", "DRAWINGNAME") ?? "";
+                string thCurrent = GetAttributeMulti(current, "图号", "TH", "XH", "BH", "编号") ?? "";
+
+                // 找出前缀相同、末尾编号连续的条目
+                for (int j = i + 1; j < blocks.Count; j++)
+                {
+                    if (merged.Contains(j)) continue;
+
+                    var next = blocks[j];
+                    string tmNext = GetAttributeMulti(next, "图名", "NAME", "TM", "DRAWINGNAME") ?? "";
+                    string thNext = GetAttributeMulti(next, "图号", "TH", "XH", "BH", "编号") ?? "";
+
+                    // 检查图名是否只是末尾编号不同
+                    bool tmMatch = HasSamePrefixWithDifferentSuffix(tmCurrent, tmNext);
+                    bool thMatch = HasSamePrefixWithDifferentSuffix(thCurrent, thNext);
+
+                    if (tmMatch || thMatch)
+                    {
+                        group.Add(next);
+                        merged.Add(j);
+                    }
+                }
+
+                // 如果一组有多于1个条目，执行合并
+                if (group.Count > 1)
+                {
+                    var mergedBlock = CreateMergedBlock(group[0], group);
+                    result.Add(mergedBlock);
+                }
+                else
+                {
+                    result.Add(current);
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 检查两个字符串是否只是末尾编号不同
+        /// </summary>
+        private bool HasSamePrefixWithDifferentSuffix(string a, string b)
+        {
+            if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
+            if (a == b) return false;
+
+            // 提取末尾的编号
+            var (prefixA, suffixA) = ExtractPrefixAndSuffix(a);
+            var (prefixB, suffixB) = ExtractPrefixAndSuffix(b);
+
+            // 前缀必须相同，编号必须不同
+            return prefixA == prefixB && suffixA != suffixB;
+        }
+
+        /// <summary>
+        /// 提取字符串的前缀（不含编号部分）和末尾编号
+        /// </summary>
+        private (string prefix, string suffix) ExtractPrefixAndSuffix(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return (s, "");
+
+            // 尝试提取中文数字编号：如 (一)、(二)、(甲)、(乙)
+            var chineseNumPattern = System.Text.RegularExpressions.Regex.Match(s, @"^(.+?)([一二三四五六七八九十甲乙丙丁]+)$");
+            if (chineseNumPattern.Success)
+            {
+                return (chineseNumPattern.Groups[1].Value, chineseNumPattern.Groups[2].Value);
+            }
+
+            // 尝试提取括号内的中文编号：如 (1)、(2)
+            var parenPattern = System.Text.RegularExpressions.Regex.Match(s, @"^(.+?)（(.+)）$");
+            if (parenPattern.Success)
+            {
+                return (parenPattern.Groups[1].Value + "（" + parenPattern.Groups[2].Value + "）", "");
+            }
+
+            // 尝试提取末尾的数字编号：如 -01、_2、03
+            var numPattern = System.Text.RegularExpressions.Regex.Match(s, @"^(.+?)[-_]?(\d+)$");
+            if (numPattern.Success)
+            {
+                return (numPattern.Groups[1].Value, numPattern.Groups[2].Value);
+            }
+
+            return (s, "");
+        }
+
+        /// <summary>
+        /// 创建合并后的块数据
+        /// </summary>
+        private AttributeBlockData CreateMergedBlock(AttributeBlockData first, List<AttributeBlockData> group)
+        {
+            string tmFirst = GetAttributeMulti(first, "图名", "NAME", "TM", "DRAWINGNAME") ?? "";
+            string thFirst = GetAttributeMulti(first, "图号", "TH", "XH", "BH", "编号") ?? "";
+
+            var merged = new AttributeBlockData
+            {
+                BlockId = first.BlockId,
+                BlockName = first.BlockName,
+                Position = first.Position,
+                SelectionOrder = first.SelectionOrder,
+                Attributes = new Dictionary<string, string>(first.Attributes, StringComparer.OrdinalIgnoreCase)
+            };
+
+            // 合并图名
+            if (!string.IsNullOrEmpty(tmFirst))
+            {
+                var (prefix, suffix) = ExtractPrefixAndSuffix(tmFirst);
+                if (!string.IsNullOrEmpty(suffix))
+                {
+                    // 收集所有编号
+                    var suffixes = new List<string> { suffix };
+                    foreach (var block in group.Skip(1))
+                    {
+                        string tm = GetAttributeMulti(block, "图名", "NAME", "TM", "DRAWINGNAME") ?? "";
+                        var (_, suf) = ExtractPrefixAndSuffix(tm);
+                        if (!string.IsNullOrEmpty(suf)) suffixes.Add(suf);
+                    }
+                    suffixes = suffixes.Distinct().OrderBy(x => x).ToList();
+                    merged.SetAttribute("图名", prefix + "(" + string.Join("～", suffixes) + ")");
+                }
+            }
+
+            // 合并图号
+            if (!string.IsNullOrEmpty(thFirst))
+            {
+                var (prefix, suffix) = ExtractPrefixAndSuffix(thFirst);
+                if (!string.IsNullOrEmpty(suffix))
+                {
+                    var suffixes = new List<string> { suffix };
+                    foreach (var block in group.Skip(1))
+                    {
+                        string th = GetAttributeMulti(block, "图号", "TH", "XH", "BH", "编号") ?? "";
+                        var (_, suf) = ExtractPrefixAndSuffix(th);
+                        if (!string.IsNullOrEmpty(suf)) suffixes.Add(suf);
+                    }
+                    suffixes = suffixes.Distinct().OrderBy(x => x).ToList();
+                    merged.SetAttribute("图号", prefix + "(" + string.Join("～", suffixes) + ")");
+                }
+            }
+
+            return merged;
         }
 
         public void OnInsertPointSelected(Point3d pos)
@@ -1111,7 +1573,14 @@ namespace BlockCatalogPlugin.UI
                 }
 
                 var sortType = GetSelectedSortType();
-                var sortedBlocks = _sortEngine.Sort(targetBlocks, sortType, 500.0, chkReverse.Checked);
+                var sortedBlocks = _sortEngine.Sort(targetBlocks, sortType, _sortTolerance, chkReverse.Checked);
+
+                // 如果勾选了合并选项，则合并相同前缀的条目
+                if (chkMergeSameName?.Checked == true)
+                {
+                    sortedBlocks = MergeSamePrefixBlocks(sortedBlocks);
+                    AppendLog($"已合并相同前缀的条目，剩余 {sortedBlocks.Count} 项", Theme.TextDim);
+                }
 
                 string targetLayout = null;
                 if (radLayout.Checked && cmbLayoutName.SelectedItem != null)
@@ -1179,8 +1648,8 @@ namespace BlockCatalogPlugin.UI
 
         private SortEngine.SortType GetSelectedSortType()
         {
-            if (radSortLR_TB.Checked) return SortEngine.SortType.LeftRight_TopBottom;
-            if (radSortTB_LR.Checked) return SortEngine.SortType.TopBottom_LeftRight;
+            if (radSortLR_TB.Checked) return SortEngine.SortType.TopBottom_LeftRight;
+            if (radSortTB_LR.Checked) return SortEngine.SortType.LeftRight_TopBottom;
             if (radSortSelection.Checked) return SortEngine.SortType.SelectionOrder;
             if (radSortNumeric.Checked) return SortEngine.SortType.NumericOrder;
             return SortEngine.SortType.SelectionOrder;
@@ -1267,7 +1736,14 @@ namespace BlockCatalogPlugin.UI
                 }
 
                 var sortType = GetSelectedSortType();
-                var sortedBlocks = _sortEngine.Sort(targetBlocks, sortType, 500.0, chkReverse.Checked);
+                var sortedBlocks = _sortEngine.Sort(targetBlocks, sortType, _sortTolerance, chkReverse.Checked);
+
+                // 如果勾选了合并选项，则合并相同前缀的条目
+                if (chkMergeSameName?.Checked == true)
+                {
+                    sortedBlocks = MergeSamePrefixBlocks(sortedBlocks);
+                    AppendLog($"已合并相同前缀的条目，剩余 {sortedBlocks.Count} 项", Theme.TextDim);
+                }
 
                 string targetLayout = null;
                 if (radLayout.Checked && cmbLayoutName.SelectedItem != null)

@@ -42,6 +42,9 @@ namespace BlockCatalogPlugin
         // 界面偏好
         public bool AutoSwitchToConfigTab { get; set; } = true;
         public bool ShowLogTimestamp { get; set; } = true;
+
+        // 快捷键偏好
+        public string ShortcutKey { get; set; } = "bca";
     }
 
     /// <summary>
