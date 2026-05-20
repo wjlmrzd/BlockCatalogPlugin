@@ -70,6 +70,11 @@ namespace BlockCatalogPlugin.UI
         private ComboBox cmbLayoutName;
         private RadioButton radModelSpace;
         private RadioButton radLayout;
+        private TextBox txtSpacingExpression;
+        private ComboBox cmbBlockNameFilter;
+        private Button btnReset;
+        private Button btnImport;
+        private Button btnExport;
 
         // 缓存的 GDI 资源（避免在 Paint 事件中重复创建）
         private static Font _headerTitleFont;
@@ -383,6 +388,24 @@ namespace BlockCatalogPlugin.UI
             btnClearData.Click += (s, e) => ClearData();
             panel.Controls.Add(btnClearData);
 
+            y += 35;
+
+            // 重置/导入/导出按钮
+            btnReset = CreateFlatButton("重置", leftMargin, y, 55, Theme.Warning);
+            btnReset.Height = 24;
+            btnReset.Click += (s, e) => ResetPanel();
+            panel.Controls.Add(btnReset);
+
+            btnImport = CreateFlatButton("导入", leftMargin + 60, y, 55, Theme.Primary);
+            btnImport.Height = 24;
+            btnImport.Click += (s, e) => ImportSettings();
+            panel.Controls.Add(btnImport);
+
+            btnExport = CreateFlatButton("导出", leftMargin + 120, y, 55, Theme.AccentLight);
+            btnExport.Height = 24;
+            btnExport.Click += (s, e) => ExportSettings();
+            panel.Controls.Add(btnExport);
+
             return panel;
         }
 
@@ -407,8 +430,8 @@ namespace BlockCatalogPlugin.UI
             // DataGridView
             dgvBlocks = new DataGridView
             {
-                Location = new Point(6, 18),
-                Size = new Size(grpBuffer.Width - 12, 195),
+                Location = new Point(6, 44),
+                Size = new Size(grpBuffer.Width - 12, 170),
                 BackgroundColor = Theme.Card,
                 ForeColor = Theme.Text,
                 BorderStyle = BorderStyle.None,
@@ -438,11 +461,26 @@ namespace BlockCatalogPlugin.UI
             dgvBlocks.DragOver += DgvBlocks_DragOver;
             dgvBlocks.DragDrop += DgvBlocks_DragDrop;
 
+            // 图框块名下拉去重选择框
+            cmbBlockNameFilter = new ComboBox
+            {
+                Location = new Point(6, 18),
+                Size = new Size(grpBuffer.Width - 60, 22),
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                FlatStyle = FlatStyle.Flat
+            };
+            cmbBlockNameFilter.Items.Add("(全部)");
+            cmbBlockNameFilter.SelectedIndex = 0;
+            cmbBlockNameFilter.SelectedIndexChanged += (s, e) => FilterBlocksByName();
+            grpBuffer.Controls.Add(cmbBlockNameFilter);
+
             // 右侧小按钮
             var btnPanel = new Panel
             {
-                Location = new Point(grpBuffer.Width - 52, 18),
-                Size = new Size(46, 195),
+                Location = new Point(grpBuffer.Width - 52, 44),
+                Size = new Size(46, 170),
                 BackColor = Theme.Card
             };
 
@@ -615,8 +653,32 @@ namespace BlockCatalogPlugin.UI
             radLayout.CheckedChanged += (s, e) => { cmbLayoutName.Enabled = radLayout.Checked; };
             panel.Controls.Add(grpStyle);
 
+            // 间距表达式
+            var grpSpacing = new GroupBox
+            {
+                Text = "间距表达式",
+                Location = new Point(4, 170),
+                Size = new Size(panel.Width - 8, 45),
+                BackColor = Theme.Card,
+                ForeColor = Theme.Text,
+                FlatStyle = FlatStyle.Flat
+            };
+
+            txtSpacingExpression = new TextBox
+            {
+                Location = new Point(8, 18),
+                Size = new Size(grpSpacing.Width - 16, 22),
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text,
+                BorderStyle = BorderStyle.FixedSingle,
+                Font = new Font("Consolas", 8F),
+                Text = "5"
+            };
+            grpSpacing.Controls.Add(txtSpacingExpression);
+            panel.Controls.Add(grpSpacing);
+
             // 输出按钮
-            int btnY = 175;
+            int btnY = 225;
 
             var btnPreview = CreateFlatButton("预览目录", 4, btnY, panel.Width - 8, Theme.Primary);
             btnPreview.Height = 35;

@@ -75,6 +75,7 @@ namespace BlockCatalogPlugin
                             if (ar.Tag.Equals(targetTag, StringComparison.OrdinalIgnoreCase))
                             {
                                 ar.TextString = targetValue;
+                                ar.UpdateField(); // 强制刷新图面显示
                                 tagFound = true;
                                 break; // 找到匹配的Tag后跳出
                             }
