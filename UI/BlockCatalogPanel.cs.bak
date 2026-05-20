@@ -1,0 +1,1421 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Linq;
+using System.Windows.Forms;
+using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.EditorInput;
+using Autodesk.AutoCAD.Geometry;
+
+namespace BlockCatalogPlugin.UI
+{
+    // Theme alias for ThemeConfig
+    internal static class Theme
+    {
+        internal static Color Bg => ThemeConfig.BgAlt;
+        internal static Color Card => ThemeConfig.CardAlt;
+        internal static Color CardHover => ThemeConfig.CardHover;
+        internal static Color Border => ThemeConfig.BorderAlt;
+        internal static Color Primary => ThemeConfig.Primary;
+        internal static Color PrimaryLight => ThemeConfig.PrimaryLight;
+        internal static Color Accent => ThemeConfig.Accent;
+        internal static Color AccentLight => ThemeConfig.AccentLight;
+        internal static Color Text => ThemeConfig.Text;
+        internal static Color TextBright => ThemeConfig.TextBright;
+        internal static Color TextDim => ThemeConfig.TextDim;
+        internal static Color InputBg => ThemeConfig.InputBgAlt;
+        internal static Color LogBg => ThemeConfig.LogBg;
+        internal static Color Success => ThemeConfig.SuccessAlt;
+        internal static Color Warning => ThemeConfig.WarningAlt;
+        internal static Color Error => ThemeConfig.Error;
+    }
+
+    public class BlockCatalogPanel : UserControl
+    {
+        private BlockExtractor _extractor = new BlockExtractor();
+        private CatalogGenerator _generator = new CatalogGenerator();
+        private SortEngine _sortEngine = new SortEngine();
+        private AttributeModifier _modifier = new AttributeModifier();
+        private FrameSelector _frameSelector = new FrameSelector();
+
+        private ExtractionResult _currentResult;
+        private List<string> _selectedBlockNames = new List<string>();
+        private List<string> _selectedTags = new List<string>();
+        private CatalogStyle _currentStyle = new CatalogStyle();
+        private UserPreferences _preferences;
+
+        private RichTextBox rtbLog;
+        private TabControl tabControl;
+
+        // 缓存的 GDI 资源（避免在 Paint 事件中重复创建）
+        private static Font _headerTitleFont;
+        private static Font _headerVerFont;
+        private static Brush _headerTitleBrush;
+        private static Brush _headerVerBrush;
+        private static Font _tabFontNormal;
+        private static Font _tabFontBold;
+        private static Brush _tabSelectedBrush;
+        private static Brush _tabNormalBrush;
+        private static Brush _tabTextSelectedBrush;
+        private static Brush _tabTextNormalBrush;
+        private static StringFormat _tabStringFormat;
+
+        // Tab 1 controls
+        private FlowLayoutPanel pnlBlockNames;
+        private FlowLayoutPanel pnlAttributeTags;
+        private TextBox txtRegexFilter;
+        private TextBox txtExcludeFilter;
+        private TextBox txtLayerFilter;
+        private Label lblSelectedCount;
+        private ComboBox _cmbBlockFilter;
+
+        // Tab 2 controls
+        private FlowLayoutPanel pnlColumnOrder;
+        private ComboBox cmbSequenceFormat;
+        private CheckBox chkSmartMerge;
+        private CheckBox chkShowHeader;
+        private NumericUpDown numRowHeight;
+        private ComboBox cmbTemplate;
+
+        // Tab 3 controls
+        private RadioButton radModelSpace;
+        private RadioButton radLayout;
+        private ComboBox cmbLayoutName;
+        private CheckBox chkMergeInGenerate;
+
+        // Drag-drop state
+        private int _dragColumnIndex = -1;
+        private Point _dragStartPoint;
+        private bool _isDragging = false;
+
+        public BlockCatalogPanel()
+        {
+            _preferences = PreferencesManager.Instance.Load();
+            _currentStyle = LoadStyleFromPreferences();
+            EnsureCachedResources();
+
+            InitializeComponents();
+            LoadTemplates();
+        }
+
+        private static void EnsureCachedResources()
+        {
+            _headerTitleFont ??= new Font("Microsoft YaHei UI", 13F, FontStyle.Bold);
+            _headerVerFont ??= new Font("Microsoft YaHei UI", 8F);
+            _headerTitleBrush ??= new SolidBrush(Theme.TextBright);
+            _headerVerBrush ??= new SolidBrush(Theme.TextDim);
+            _tabFontNormal ??= new Font("Microsoft YaHei UI", 9F, FontStyle.Regular);
+            _tabFontBold ??= new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            _tabSelectedBrush ??= new SolidBrush(Theme.Card);
+            _tabNormalBrush ??= new SolidBrush(Theme.Bg);
+            _tabTextSelectedBrush ??= new SolidBrush(Theme.TextBright);
+            _tabTextNormalBrush ??= new SolidBrush(Theme.TextDim);
+            _tabStringFormat ??= new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+        }
+
+        private CatalogStyle LoadStyleFromPreferences()
+        {
+            return new CatalogStyle
+            {
+                RowHeight = _preferences.TableRowHeight,
+                MergeStrategy = MergeStrategy.PrefixConsecutive,
+                SequenceFormat = SequenceFormat.Numeric,
+                HeaderVisible = true,
+                Columns = new List<ColumnDef>
+                {
+                    new ColumnDef { Tag = "XH", Header = "序号", Width = 20, Visible = true, Order = 0 },
+                    new ColumnDef { Tag = "TH", Header = "图号", Width = 40, Visible = true, Order = 1 },
+                    new ColumnDef { Tag = "TM", Header = "图名", Width = 60, Visible = true, Order = 2 }
+                }
+            };
+        }
+
+        private void InitializeComponents()
+        {
+            BackColor = Theme.Bg;
+            ForeColor = Theme.Text;
+            AutoScroll = false;
+            Padding = new Padding(0);
+
+            var root = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                RowCount = 3,
+                ColumnCount = 1,
+                BackColor = Theme.Bg,
+                Padding = new Padding(0)
+            };
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 180));
+
+            // Header
+            var pnlHeader = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Card };
+            pnlHeader.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.DrawString("目录生成", _headerTitleFont, _headerTitleBrush, 12, 14);
+                g.DrawString("V2.0", _headerVerFont, _headerVerBrush, 12, 34);
+            };
+            root.Controls.Add(pnlHeader, 0, 0);
+
+            // TabControl with 3 tabs
+            tabControl = new TabControl
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Theme.Bg,
+                ForeColor = Theme.Text,
+                Margin = new Padding(0),
+                Padding = new Point(0, 0)
+            };
+            tabControl.DrawMode = TabDrawMode.OwnerDrawFixed;
+            tabControl.DrawItem += TabControl_DrawItem;
+            tabControl.SelectedIndexChanged += TabControl_SelectedIndexChanged;
+
+            var tabExtract = new TabPage("提取") { BackColor = Theme.Bg, Padding = new Padding(8) };
+            var tabStyle = new TabPage("样式") { BackColor = Theme.Bg, Padding = new Padding(8) };
+            var tabGenerate = new TabPage("生成") { BackColor = Theme.Bg, Padding = new Padding(8) };
+
+            tabExtract.Controls.Add(CreateExtractContent());
+            tabStyle.Controls.Add(CreateStyleContent());
+            tabGenerate.Controls.Add(CreateGenerateContent());
+
+            tabControl.TabPages.Add(tabExtract);
+            tabControl.TabPages.Add(tabStyle);
+            tabControl.TabPages.Add(tabGenerate);
+            root.Controls.Add(tabControl, 0, 1);
+
+            // Log panel
+            var logPanel = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Card };
+            var logHeader = new Panel { Dock = DockStyle.Top, Height = 26, BackColor = Theme.Card };
+            logHeader.Controls.Add(new Label
+            {
+                Text = "操作日志",
+                Dock = DockStyle.Left,
+                AutoSize = true,
+                Font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold),
+                ForeColor = Theme.TextDim,
+                Padding = new Padding(8, 4, 0, 0)
+            });
+            var btnClear = new Button
+            {
+                Text = "清空",
+                Dock = DockStyle.Right,
+                Width = 50,
+                BackColor = Theme.Card,
+                ForeColor = Theme.TextDim,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Microsoft YaHei UI", 7.5F),
+                Cursor = Cursors.Hand
+            };
+            btnClear.FlatAppearance.BorderSize = 0;
+            btnClear.Click += (s, e) => rtbLog?.Clear();
+            logHeader.Controls.Add(btnClear);
+            logPanel.Controls.Add(logHeader);
+
+            rtbLog = new RichTextBox
+            {
+                Dock = DockStyle.Fill,
+                BackColor = Theme.LogBg,
+                ForeColor = Theme.Text,
+                Font = new Font("Consolas", 8F),
+                ReadOnly = true,
+                BorderStyle = BorderStyle.None,
+                WordWrap = true,
+                ScrollBars = RichTextBoxScrollBars.Vertical
+            };
+            logPanel.Controls.Add(rtbLog);
+            root.Controls.Add(logPanel, 0, 2);
+
+            Controls.Add(root);
+            AppendLog("准备就绪", Theme.TextDim);
+        }
+
+        private void TabControl_DrawItem(object sender, DrawItemEventArgs e)
+        {
+            var tc = sender as TabControl;
+            if (tc == null) return;
+
+            var g = e.Graphics;
+            var rect = tc.GetTabRect(e.Index);
+
+            var bgBrush = e.Index == tc.SelectedIndex ? _tabSelectedBrush : _tabNormalBrush;
+            g.FillRectangle(bgBrush, rect);
+
+            var page = tc.TabPages[e.Index];
+            var font = e.Index == tc.SelectedIndex ? _tabFontBold : _tabFontNormal;
+            var textBrush = e.Index == tc.SelectedIndex ? _tabTextSelectedBrush : _tabTextNormalBrush;
+            g.DrawString(page.Text, font, textBrush, rect, _tabStringFormat);
+        }
+
+        private void TabControl_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            // Tab changed - no special action needed
+        }
+
+        #region Tab 1 - Extract
+
+        private Panel CreateExtractContent()
+        {
+            var panel = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg, AutoScroll = true };
+
+            int y = 10;
+            int leftMargin = 10;
+
+            // === Row 1: Frame selection buttons ===
+            var btnSelectFrame = CreateFlatButton("框选属性块", leftMargin, y, 110, Theme.Primary);
+            btnSelectFrame.Click += (s, e) => ExecuteCommand("_BCSELECT");
+
+            var btnSmartExtract = CreateFlatButton("智能提取", leftMargin + 120, y, 90, Theme.AccentLight);
+            btnSmartExtract.Click += (s, e) => ExecuteCommand("_BCSMARTEXTRACT");
+
+            y += 35;
+
+            // === Row 2: Block names section ===
+            var lblBlockNames = new Label
+            {
+                Text = "块名列表：",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                ForeColor = Theme.TextBright,
+                Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold)
+            };
+            panel.Controls.Add(lblBlockNames);
+            y += 22;
+
+            var pnlBlockContainer = new Panel
+            {
+                Location = new Point(leftMargin, y),
+                Size = new Size(panel.Width - 20, 80),
+                BackColor = Theme.Card,
+                BorderStyle = BorderStyle.FixedSingle
+            };
+
+            pnlBlockNames = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = true,
+                AutoScroll = true,
+                BackColor = Color.Transparent
+            };
+            pnlBlockContainer.Controls.Add(pnlBlockNames);
+            panel.Controls.Add(pnlBlockContainer);
+            y += 85;
+
+            // === Row 3: Attribute tags section ===
+            var lblAttrTags = new Label
+            {
+                Text = "属性标签：",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                ForeColor = Theme.TextBright,
+                Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold)
+            };
+            panel.Controls.Add(lblAttrTags);
+            y += 22;
+
+            var pnlTagContainer = new Panel
+            {
+                Location = new Point(leftMargin, y),
+                Size = new Size(panel.Width - 20, 80),
+                BackColor = Theme.Card,
+                BorderStyle = BorderStyle.FixedSingle
+            };
+
+            pnlAttributeTags = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = true,
+                AutoScroll = true,
+                BackColor = Color.Transparent
+            };
+            pnlTagContainer.Controls.Add(pnlAttributeTags);
+            panel.Controls.Add(pnlTagContainer);
+            y += 85;
+
+            // === Row 4: Filters ===
+            var lblRegex = new Label
+            {
+                Text = "正则过滤：",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                ForeColor = Theme.TextDim,
+                Font = new Font("Microsoft YaHei UI", 8F)
+            };
+            panel.Controls.Add(lblRegex);
+
+            txtRegexFilter = new TextBox
+            {
+                Location = new Point(leftMargin + 70, y - 2),
+                Width = 120,
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text,
+                BorderStyle = BorderStyle.FixedSingle,
+                Font = new Font("Consolas", 8F)
+            };
+            txtRegexFilter.TextChanged += Filter_TextChanged;
+            panel.Controls.Add(txtRegexFilter);
+
+            var lblExclude = new Label
+            {
+                Text = "排除：",
+                Location = new Point(leftMargin + 210, y),
+                AutoSize = true,
+                ForeColor = Theme.TextDim,
+                Font = new Font("Microsoft YaHei UI", 8F)
+            };
+            panel.Controls.Add(lblExclude);
+
+            txtExcludeFilter = new TextBox
+            {
+                Location = new Point(leftMargin + 250, y - 2),
+                Width = 120,
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text,
+                BorderStyle = BorderStyle.FixedSingle,
+                Font = new Font("Consolas", 8F)
+            };
+            txtExcludeFilter.TextChanged += Filter_TextChanged;
+            panel.Controls.Add(txtExcludeFilter);
+            y += 28;
+
+            var lblLayer = new Label
+            {
+                Text = "图层过滤：",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                ForeColor = Theme.TextDim,
+                Font = new Font("Microsoft YaHei UI", 8F)
+            };
+            panel.Controls.Add(lblLayer);
+
+            txtLayerFilter = new TextBox
+            {
+                Location = new Point(leftMargin + 70, y - 2),
+                Width = 250,
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text,
+                BorderStyle = BorderStyle.FixedSingle,
+                Font = new Font("Consolas", 8F)
+            };
+            txtLayerFilter.TextChanged += Filter_TextChanged;
+            panel.Controls.Add(txtLayerFilter);
+            y += 30;
+
+            // === Row 4.5: Block name filter with pick button ===
+            var lblBlockFilter = new Label
+            {
+                Text = "块名过滤：",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                ForeColor = Theme.TextDim,
+                Font = new Font("Microsoft YaHei UI", 8F)
+            };
+            panel.Controls.Add(lblBlockFilter);
+
+            var cmbBlockFilter = new ComboBox
+            {
+                Location = new Point(leftMargin + 70, y - 2),
+                Width = 180,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text,
+                FlatStyle = FlatStyle.Flat
+            };
+            cmbBlockFilter.SelectedIndexChanged += (s, e) =>
+            {
+                if (cmbBlockFilter.SelectedItem is string blockName && !string.IsNullOrEmpty(blockName))
+                {
+                    // Filter block list to show only selected block
+                    foreach (CheckBox cb in pnlBlockNames.Controls.OfType<CheckBox>())
+                    {
+                        cb.Checked = cb.Text == blockName;
+                    }
+                }
+            };
+            panel.Controls.Add(cmbBlockFilter);
+            _cmbBlockFilter = cmbBlockFilter;
+
+            var btnPickBlock = CreateFlatButton("拾取", leftMargin + 255, y - 3, 55, Theme.Accent);
+            btnPickBlock.Click += (s, e) => ExecuteCommand("_BCPICKBLOCK");
+            panel.Controls.Add(btnPickBlock);
+            y += 30;
+
+            // === Row 5: Action buttons and selection count ===
+            var btnRefresh = CreateFlatButton("刷新数据", leftMargin, y, 80, Theme.Primary);
+            btnRefresh.Click += (s, e) => RefreshData();
+
+            var btnClear = CreateFlatButton("清除", leftMargin + 90, y, 60, Theme.Warning);
+            btnClear.Click += (s, e) => ClearSelection();
+
+            lblSelectedCount = new Label
+            {
+                Text = "已选择: 0 个块",
+                Location = new Point(leftMargin + 300, y + 4),
+                AutoSize = true,
+                ForeColor = Theme.TextDim,
+                Font = new Font("Microsoft YaHei UI", 8F)
+            };
+            panel.Controls.Add(lblSelectedCount);
+
+            return panel;
+        }
+
+        private void ExecuteCommand(string command)
+        {
+            var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            if (doc != null)
+            {
+                AppendLog($"执行命令: {command}", Theme.TextDim);
+                doc.SendStringToExecute(command + " ", true, false, true);
+            }
+        }
+
+        private void RefreshData()
+        {
+            if (_currentResult == null || _currentResult.Blocks.Count == 0)
+            {
+                AppendLog("没有可刷新的数据", Theme.Warning);
+                return;
+            }
+
+            // Re-apply filters and update UI
+            UpdateBlockNameList();
+            UpdateAttributeTagList();
+            ApplyFilters();
+            AppendLog($"已刷新 {_currentResult.Blocks.Count} 个块数据", Theme.Success);
+        }
+
+        private void ClearSelection()
+        {
+            _selectedBlockNames.Clear();
+            _selectedTags.Clear();
+            pnlBlockNames.Controls.Clear();
+            pnlAttributeTags.Controls.Clear();
+            lblSelectedCount.Text = "已选择: 0 个块";
+            _currentResult = null;
+            AppendLog("已清除所有选择", Theme.TextDim);
+        }
+
+        private void Filter_TextChanged(object sender, EventArgs e)
+        {
+            ApplyFilters();
+        }
+
+        private void ApplyFilters()
+        {
+            // Apply regex and exclude filters to block names
+            foreach (CheckBox cb in pnlBlockNames.Controls.OfType<CheckBox>())
+            {
+                bool visible = true;
+                string blockName = cb.Tag?.ToString() ?? cb.Text;
+
+                // Apply regex filter
+                if (!string.IsNullOrEmpty(txtRegexFilter.Text))
+                {
+                    try
+                    {
+                        var regex = new System.Text.RegularExpressions.Regex(txtRegexFilter.Text,
+                            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        visible = regex.IsMatch(blockName);
+                    }
+                    catch
+                    {
+                        // Invalid regex, skip filter
+                    }
+                }
+
+                // Apply exclude filter
+                if (visible && !string.IsNullOrEmpty(txtExcludeFilter.Text))
+                {
+                    var excludes = txtExcludeFilter.Text.Split(',');
+                    foreach (var ex in excludes)
+                    {
+                        if (blockName.Contains(ex.Trim(), StringComparison.OrdinalIgnoreCase))
+                        {
+                            visible = false;
+                            break;
+                        }
+                    }
+                }
+
+                cb.Visible = visible;
+            }
+        }
+
+        #endregion
+
+        #region Tab 2 - Style
+
+        private Panel CreateStyleContent()
+        {
+            var panel = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg, AutoScroll = true };
+
+            int y = 10;
+            int leftMargin = 10;
+
+            // === Column Order Section ===
+            var lblColumnOrder = new Label
+            {
+                Text = "列排序（拖拽调整）：",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                ForeColor = Theme.TextBright,
+                Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold)
+            };
+            panel.Controls.Add(lblColumnOrder);
+            y += 25;
+
+            // Column order panel with drag-drop support
+            var pnlColumnContainer = new Panel
+            {
+                Location = new Point(leftMargin, y),
+                Size = new Size(panel.Width - 20, 70),
+                BackColor = Theme.Card,
+                BorderStyle = BorderStyle.FixedSingle
+            };
+
+            pnlColumnOrder = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoScroll = false,
+                BackColor = Color.Transparent
+            };
+            pnlColumnContainer.Controls.Add(pnlColumnOrder);
+            panel.Controls.Add(pnlColumnContainer);
+            y += 75;
+
+            // === Sequence Format Section ===
+            var lblSeqFormat = new Label
+            {
+                Text = "序号格式：",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                ForeColor = Theme.TextDim,
+                Font = new Font("Microsoft YaHei UI", 8F)
+            };
+            panel.Controls.Add(lblSeqFormat);
+            y += 22;
+
+            cmbSequenceFormat = new ComboBox
+            {
+                Location = new Point(leftMargin, y - 2),
+                Width = 200,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text,
+                FlatStyle = FlatStyle.Flat
+            };
+            cmbSequenceFormat.Items.AddRange(new object[]
+            {
+                "(●) 1,2,3 — 数字",
+                "( ) 01,02,03 — 补零",
+                "( ) ①,②,③ — 圆圈",
+                "( ) 一,二,三 — 中文",
+                "( ) A,B,C — 字母"
+            });
+            cmbSequenceFormat.SelectedIndex = 0;
+            cmbSequenceFormat.SelectedIndexChanged += CmbSequenceFormat_SelectedIndexChanged;
+            panel.Controls.Add(cmbSequenceFormat);
+            y += 30;
+
+            // === Merge Strategy Section ===
+            chkSmartMerge = new CheckBox
+            {
+                Text = "启用智能合并（连续同前缀合并为\"建施-1~5\"）",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                ForeColor = Theme.Text,
+                BackColor = Theme.Bg,
+                Checked = _currentStyle.MergeStrategy == MergeStrategy.PrefixConsecutive
+            };
+            chkSmartMerge.CheckedChanged += ChkSmartMerge_CheckedChanged;
+            panel.Controls.Add(chkSmartMerge);
+            y += 25;
+
+            // === Header Visibility Section ===
+            chkShowHeader = new CheckBox
+            {
+                Text = "显示表头",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                ForeColor = Theme.Text,
+                BackColor = Theme.Bg,
+                Checked = _currentStyle.HeaderVisible
+            };
+            chkShowHeader.CheckedChanged += ChkShowHeader_CheckedChanged;
+            panel.Controls.Add(chkShowHeader);
+            y += 30;
+
+            // === Row Height Section ===
+            var lblRowHeight = new Label
+            {
+                Text = "行高：",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                ForeColor = Theme.TextDim,
+                Font = new Font("Microsoft YaHei UI", 8F)
+            };
+            panel.Controls.Add(lblRowHeight);
+
+            numRowHeight = new NumericUpDown
+            {
+                Location = new Point(leftMargin + 40, y - 2),
+                Width = 70,
+                Minimum = 1,
+                Maximum = 50,
+                Value = (decimal)_currentStyle.RowHeight,
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text,
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            numRowHeight.ValueChanged += NumRowHeight_ValueChanged;
+            panel.Controls.Add(numRowHeight);
+
+            var lblMm = new Label
+            {
+                Text = "mm",
+                Location = new Point(leftMargin + 115, y),
+                AutoSize = true,
+                ForeColor = Theme.TextDim,
+                Font = new Font("Microsoft YaHei UI", 8F)
+            };
+            panel.Controls.Add(lblMm);
+
+            var btnPickDimSize = CreateFlatButton("拖拽定义尺寸", leftMargin + 160, y - 3, 100, Theme.Primary);
+            btnPickDimSize.Click += (s, e) => ExecuteCommand("_BCPICKDIMSIZE");
+            panel.Controls.Add(btnPickDimSize);
+            y += 35;
+
+            // === Template Section ===
+            var lblTemplate = new Label
+            {
+                Text = "模板：",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                ForeColor = Theme.TextDim,
+                Font = new Font("Microsoft YaHei UI", 8F)
+            };
+            panel.Controls.Add(lblTemplate);
+
+            cmbTemplate = new ComboBox
+            {
+                Location = new Point(leftMargin + 40, y - 2),
+                Width = 120,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text,
+                FlatStyle = FlatStyle.Flat
+            };
+            cmbTemplate.SelectedIndexChanged += CmbTemplate_SelectedIndexChanged;
+            panel.Controls.Add(cmbTemplate);
+
+            var btnSaveTemplate = CreateFlatButton("保存模板", leftMargin + 170, y - 3, 80, Theme.Success);
+            btnSaveTemplate.Click += BtnSaveTemplate_Click;
+            panel.Controls.Add(btnSaveTemplate);
+
+            var btnLoadTemplate = CreateFlatButton("加载模板", leftMargin + 255, y - 3, 80, Theme.Primary);
+            btnLoadTemplate.Click += BtnLoadTemplate_Click;
+            panel.Controls.Add(btnLoadTemplate);
+
+            // Initialize column order UI
+            UpdateColumnOrderUI();
+
+            return panel;
+        }
+
+        private void UpdateColumnOrderUI()
+        {
+            pnlColumnOrder.Controls.Clear();
+
+            foreach (var col in _currentStyle.Columns.OrderBy(c => c.Order))
+            {
+                var colBtn = CreateColumnHeaderButton(col);
+                pnlColumnOrder.Controls.Add(colBtn);
+            }
+        }
+
+        private Button CreateColumnHeaderButton(ColumnDef col)
+        {
+            var btn = new Button
+            {
+                Text = col.Header ?? col.Tag,
+                Tag = col.Tag,
+                Width = 70,
+                Height = 26,
+                BackColor = Theme.Card,
+                ForeColor = col.Visible ? Theme.Text : Theme.TextDim,
+                FlatStyle = FlatStyle.Flat,
+                Margin = new Padding(2),
+                Cursor = Cursors.SizeAll
+            };
+
+            // Click to toggle visibility
+            btn.Click += (s, e) =>
+            {
+                var column = _currentStyle.Columns.FirstOrDefault(c => c.Tag == col.Tag);
+                if (column != null)
+                {
+                    column.Visible = !column.Visible;
+                    btn.ForeColor = column.Visible ? Theme.Text : Theme.TextDim;
+                }
+            };
+
+            // Drag-drop support
+            btn.MouseDown += ColumnBtn_MouseDown;
+            btn.MouseMove += ColumnBtn_MouseMove;
+            btn.MouseUp += ColumnBtn_MouseUp;
+
+            return btn;
+        }
+
+        private void ColumnBtn_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                var btn = sender as Button;
+                if (btn != null)
+                {
+                    _dragColumnIndex = pnlColumnOrder.Controls.IndexOf(btn);
+                    _dragStartPoint = e.Location;
+                    _isDragging = false;
+                }
+            }
+        }
+
+        private void ColumnBtn_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left && _dragColumnIndex >= 0)
+            {
+                var btn = sender as Button;
+                if (btn != null && !_isDragging)
+                {
+                    // Start drag if moved enough
+                    var diff = Math.Abs(e.X - _dragStartPoint.X) + Math.Abs(e.Y - _dragStartPoint.Y);
+                    if (diff > 5)
+                    {
+                        _isDragging = true;
+                        btn.DoDragDrop(btn, DragDropEffects.Move);
+                    }
+                }
+            }
+        }
+
+        private void ColumnBtn_MouseUp(object sender, MouseEventArgs e)
+        {
+            _dragColumnIndex = -1;
+            _isDragging = false;
+        }
+
+        private void CmbSequenceFormat_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            _currentStyle.SequenceFormat = cmbSequenceFormat.SelectedIndex switch
+            {
+                0 => SequenceFormat.Numeric,
+                1 => SequenceFormat.Numeric2Digit,
+                2 => SequenceFormat.Circle,
+                3 => SequenceFormat.Chinese,
+                4 => SequenceFormat.Alpha,
+                _ => SequenceFormat.Numeric
+            };
+        }
+
+        private void ChkSmartMerge_CheckedChanged(object sender, EventArgs e)
+        {
+            _currentStyle.MergeStrategy = chkSmartMerge.Checked
+                ? MergeStrategy.PrefixConsecutive
+                : MergeStrategy.None;
+        }
+
+        private void ChkShowHeader_CheckedChanged(object sender, EventArgs e)
+        {
+            _currentStyle.HeaderVisible = chkShowHeader.Checked;
+        }
+
+        private void NumRowHeight_ValueChanged(object sender, EventArgs e)
+        {
+            _currentStyle.RowHeight = (double)numRowHeight.Value;
+        }
+
+        private void CmbTemplate_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            // Template selection changed
+        }
+
+        private void BtnSaveTemplate_Click(object sender, EventArgs e)
+        {
+            string templateName = $"模板_{DateTime.Now:yyyyMMdd_HHmmss}";
+            if (TemplateManager.Instance.Save(templateName, _currentStyle))
+            {
+                AppendLog($"已保存模板: {templateName}", Theme.Success);
+                LoadTemplates();
+            }
+            else
+            {
+                AppendLog("模板保存失败", Theme.Error);
+            }
+        }
+
+        private void BtnLoadTemplate_Click(object sender, EventArgs e)
+        {
+            if (cmbTemplate.SelectedItem == null) return;
+
+            var style = TemplateManager.Instance.Load(cmbTemplate.SelectedItem.ToString());
+            if (style != null)
+            {
+                _currentStyle = style;
+                UpdateColumnOrderUI();
+                numRowHeight.Value = (decimal)_currentStyle.RowHeight;
+                chkSmartMerge.Checked = _currentStyle.MergeStrategy == MergeStrategy.PrefixConsecutive;
+                chkShowHeader.Checked = _currentStyle.HeaderVisible;
+                AppendLog($"已加载模板: {cmbTemplate.SelectedItem}", Theme.Success);
+            }
+            else
+            {
+                AppendLog("模板加载失败", Theme.Error);
+            }
+        }
+
+        private void LoadTemplates()
+        {
+            cmbTemplate.Items.Clear();
+            var templates = TemplateManager.Instance.List();
+            foreach (var t in templates)
+            {
+                cmbTemplate.Items.Add(t);
+            }
+            if (cmbTemplate.Items.Count > 0)
+                cmbTemplate.SelectedIndex = 0;
+        }
+
+        #endregion
+
+        #region Tab 3 - Generate
+
+        private Panel CreateGenerateContent()
+        {
+            var panel = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg, AutoScroll = true };
+
+            int y = 10;
+            int leftMargin = 10;
+
+            // === Output Target Section ===
+            var lblOutputTarget = new Label
+            {
+                Text = "输出目标：",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                ForeColor = Theme.TextBright,
+                Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold)
+            };
+            panel.Controls.Add(lblOutputTarget);
+            y += 25;
+
+            // 使用 GroupBox 包裹 RadioButtons 避免布局溢出
+            var grpOutputTarget = new GroupBox
+            {
+                Text = "输出位置",
+                Location = new Point(leftMargin, y),
+                Size = new Size(panel.Width - 20, 80),
+                BackColor = Theme.Bg,
+                ForeColor = Theme.Text,
+                FlatStyle = FlatStyle.Flat
+            };
+
+            radModelSpace = new RadioButton
+            {
+                Text = "模型空间",
+                Location = new Point(15, 22),
+                AutoSize = true,
+                ForeColor = Theme.Text,
+                BackColor = Theme.Bg,
+                Checked = !_preferences.LastOutputToLayout
+            };
+            radModelSpace.CheckedChanged += (s, e) => UpdateLayoutComboState();
+            grpOutputTarget.Controls.Add(radModelSpace);
+
+            radLayout = new RadioButton
+            {
+                Text = "当前布局",
+                Location = new Point(15, 48),
+                AutoSize = true,
+                ForeColor = Theme.Text,
+                BackColor = Theme.Bg,
+                Checked = _preferences.LastOutputToLayout
+            };
+            grpOutputTarget.Controls.Add(radLayout);
+
+            cmbLayoutName = new ComboBox
+            {
+                Location = new Point(95, 45),
+                Width = 150,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                BackColor = Theme.InputBg,
+                ForeColor = Theme.Text,
+                FlatStyle = FlatStyle.Flat,
+                Enabled = radLayout.Checked
+            };
+            LoadLayoutNames();
+            grpOutputTarget.Controls.Add(cmbLayoutName);
+
+            panel.Controls.Add(grpOutputTarget);
+            y += 90;
+
+            // === Action Buttons ===
+            var btnPreview = CreateFlatButton("预览", leftMargin, y, 80, Theme.Primary);
+            btnPreview.Click += (s, e) => ShowPreview();
+
+            var btnGenerate = CreateFlatButton("生成到位置", leftMargin + 90, y, 100, Theme.Success);
+            btnGenerate.Click += (s, e) => GenerateToPosition();
+            y += 40;
+
+            // === Current Config Preview ===
+            var lblConfigPreview = new Label
+            {
+                Text = "当前配置预览：",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                ForeColor = Theme.TextBright,
+                Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold)
+            };
+            panel.Controls.Add(lblConfigPreview);
+            y += 25;
+
+            var pnlPreview = new Panel
+            {
+                Location = new Point(leftMargin, y),
+                Size = new Size(panel.Width - 20, 120),
+                BackColor = Theme.Card,
+                BorderStyle = BorderStyle.FixedSingle,
+                AutoScroll = true
+            };
+
+            var lblPreviewContent = new Label
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = false,
+                Font = new Font("Consolas", 8F),
+                ForeColor = Theme.Text,
+                Text = "序号 | 图号 | 图名 | 层名\n" +
+                       "─────┼──────┼──────┼──────\n" +
+                       "  1  | 建施-1 | 平面图 | L01\n" +
+                       "  2  | 建施-2 | 立面图 | L01\n" +
+                       "... | ...    | ...    | ..."
+            };
+            pnlPreview.Controls.Add(lblPreviewContent);
+            panel.Controls.Add(pnlPreview);
+            y += 125;
+
+            // Merge info
+            chkMergeInGenerate = new CheckBox
+            {
+                Text = "合并: 建施-1~5 (5个连续块)",
+                Location = new Point(leftMargin, y),
+                AutoSize = true,
+                ForeColor = Theme.TextDim,
+                BackColor = Theme.Bg
+            };
+            panel.Controls.Add(chkMergeInGenerate);
+            y += 30;
+
+            return panel;
+        }
+
+        private void UpdateLayoutComboState()
+        {
+            cmbLayoutName.Enabled = radLayout.Checked;
+            if (radLayout.Checked)
+            {
+                LoadLayoutNames();
+            }
+        }
+
+        private void LoadLayoutNames()
+        {
+            cmbLayoutName.Items.Clear();
+            cmbLayoutName.Items.Add("Model");
+            cmbLayoutName.SelectedIndex = 0;
+        }
+
+        private void ShowPreview()
+        {
+            if (_currentResult == null || _currentResult.Blocks.Count == 0)
+            {
+                AppendLog("请先提取属性块", Theme.Warning);
+                return;
+            }
+
+            AppendLog("打开预览窗口...", Theme.TextDim);
+            using (var dlg = new CatalogPreviewDialog(_currentResult.Blocks, _currentStyle, null, null))
+            {
+                if (dlg.ShowDialog() == DialogResult.OK)
+                {
+                    _currentStyle = dlg.ResultStyle;
+                    AppendLog("预览配置已应用", Theme.Success);
+                }
+            }
+        }
+
+        private void GenerateToPosition()
+        {
+            if (_currentResult == null || _currentResult.Blocks.Count == 0)
+            {
+                AppendLog("请先提取属性块", Theme.Warning);
+                return;
+            }
+
+            // Save output preference
+            _preferences.LastOutputToLayout = radLayout.Checked;
+            PreferencesManager.Instance.Save();
+
+            AppendLog("请在CAD中指定目录插入位置...", Theme.Primary);
+            var doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            if (doc != null)
+            {
+                Plugin._pendingGenerateAfterPick = true;
+                doc.SendStringToExecute("_BCPICKPOS ", true, false, true);
+            }
+        }
+
+        #endregion
+
+        #region Event Handlers
+
+        /// <summary>
+        /// Callback when blocks are selected via CAD command
+        /// </summary>
+        public void OnBlocksSelected(ExtractionResult result)
+        {
+            _currentResult = result;
+            _selectedBlockNames = result.Blocks.Select(b => b.BlockName).Distinct().ToList();
+            _selectedTags = result.AllTags.ToList();
+
+            UpdateBlockNameList();
+            UpdateAttributeTagList();
+            UpdateBlockFilterList();
+            UpdateSelectedCount();
+
+            AppendLog($"已提取 {result.Blocks.Count} 个块", Theme.Success);
+
+            // Auto-switch to Style tab
+            if (tabControl.SelectedIndex != 1)
+            {
+                tabControl.SelectedIndex = 1;
+            }
+        }
+
+        private void UpdateBlockFilterList()
+        {
+            if (_cmbBlockFilter == null) return;
+            _cmbBlockFilter.Items.Clear();
+            _cmbBlockFilter.Items.Add("（全部）");
+            var blockNames = _currentResult?.Blocks?.Select(b => b.BlockName).Distinct() ?? new List<string>();
+            foreach (var blockName in blockNames)
+            {
+                _cmbBlockFilter.Items.Add(blockName);
+            }
+            if (_cmbBlockFilter.Items.Count > 0)
+                _cmbBlockFilter.SelectedIndex = 0;
+        }
+
+        private void UpdateBlockNameList()
+        {
+            pnlBlockNames.Controls.Clear();
+            var blockNames = _currentResult?.Blocks?.Select(b => b.BlockName).Distinct() ?? new List<string>();
+            foreach (var blockName in blockNames)
+            {
+                var cb = new CheckBox
+                {
+                    Text = blockName,
+                    Tag = blockName,
+                    AutoSize = true,
+                    ForeColor = Theme.Text,
+                    BackColor = Color.Transparent,
+                    Margin = new Padding(4, 2, 4, 2),
+                   Checked = _selectedBlockNames.Contains(blockName)
+                };
+                cb.CheckedChanged += BlockName_CheckChanged;
+                pnlBlockNames.Controls.Add(cb);
+            }
+        }
+
+        private void BlockName_CheckChanged(object sender, EventArgs e)
+        {
+            var cb = sender as CheckBox;
+            if (cb != null)
+            {
+                if (cb.Checked && !_selectedBlockNames.Contains(cb.Tag?.ToString() ?? cb.Text))
+                {
+                    _selectedBlockNames.Add(cb.Tag?.ToString() ?? cb.Text);
+                }
+                else if (!cb.Checked)
+                {
+                    _selectedBlockNames.Remove(cb.Tag?.ToString() ?? cb.Text);
+                }
+                UpdateSelectedCount();
+            }
+        }
+
+        private void UpdateAttributeTagList()
+        {
+            pnlAttributeTags.Controls.Clear();
+            foreach (var tag in _currentResult?.AllTags ?? new List<string>())
+            {
+                var cb = new CheckBox
+                {
+                    Text = tag,
+                    Tag = tag,
+                    AutoSize = true,
+                    ForeColor = Theme.Text,
+                    BackColor = Color.Transparent,
+                    Margin = new Padding(4, 2, 4, 2),
+                    Checked = _selectedTags.Contains(tag)
+                };
+                cb.CheckedChanged += AttributeTag_CheckChanged;
+                pnlAttributeTags.Controls.Add(cb);
+            }
+        }
+
+        private void AttributeTag_CheckChanged(object sender, EventArgs e)
+        {
+            var cb = sender as CheckBox;
+            if (cb != null)
+            {
+                if (cb.Checked && !_selectedTags.Contains(cb.Tag?.ToString() ?? cb.Text))
+                {
+                    _selectedTags.Add(cb.Tag?.ToString() ?? cb.Text);
+                }
+                else if (!cb.Checked)
+                {
+                    _selectedTags.Remove(cb.Tag?.ToString() ?? cb.Text);
+                }
+            }
+        }
+
+        private void UpdateSelectedCount()
+        {
+            int count = _currentResult?.Blocks?.Count ?? 0;
+            lblSelectedCount.Text = $"已选择: {count} 个块";
+        }
+
+        /// <summary>
+        /// Insert point selected callback
+        /// </summary>
+        public void OnInsertPointSelected(Point3d pos)
+        {
+            AppendLog($"插入点已设置: ({pos.X:F1}, {pos.Y:F1})", Theme.Success);
+
+            try
+            {
+                var sortedBlocks = _sortEngine.Sort(_currentResult.Blocks, SortEngine.SortType.SelectionOrder);
+
+                string targetLayout = null;
+                if (radLayout.Checked && cmbLayoutName.SelectedItem != null)
+                {
+                    targetLayout = cmbLayoutName.SelectedItem.ToString();
+                }
+
+                MergeConfig mergeConfig = null;
+                if (chkMergeInGenerate.Checked)
+                {
+                    mergeConfig = new MergeConfig
+                    {
+                        EnableMerge = true,
+                        Criterion = MergeCriterion.Prefix,
+                        GroupSymbol = "-",
+                        RangeSymbol = "~"
+                    };
+                }
+
+                var tableId = _generator.GenerateTable(sortedBlocks, _currentStyle, mergeConfig, pos, targetLayout);
+                AppendLog("目录已生成", Theme.Success);
+
+                if (targetLayout != null)
+                    AppendLog($"  插入到布局: {targetLayout}", Theme.TextDim);
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"生成失败: {ex.Message}", Theme.Error);
+            }
+        }
+
+        /// <summary>
+        /// Block picked callback
+        /// </summary>
+        public void OnBlockPicked(string blockName)
+        {
+            AppendLog($"已选择块: {blockName}", Theme.TextDim);
+            if (!string.IsNullOrEmpty(blockName) && !_selectedBlockNames.Contains(blockName))
+            {
+                _selectedBlockNames.Add(blockName);
+                UpdateBlockNameList();
+                UpdateBlockFilterList();
+                UpdateSelectedCount();
+            }
+        }
+
+        #endregion
+
+        #region Helpers
+
+        private Button CreateFlatButton(string text, int x, int y, int width, Color? bgColor = null)
+        {
+            var btn = new Button
+            {
+                Text = text,
+                Location = new Point(x, y),
+                Width = width,
+                Height = 26,
+                BackColor = bgColor ?? Theme.Card,
+                ForeColor = Theme.Text,
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand,
+                Font = new Font("Microsoft YaHei UI", 8F)
+            };
+            btn.FlatAppearance.BorderSize = 0;
+            return btn;
+        }
+
+        /// <summary>
+        /// Thread-safe invoke
+        /// </summary>
+        public void SafeInvoke(Action action)
+        {
+            if (InvokeRequired) Invoke(action);
+            else action();
+        }
+
+        /// <summary>
+        /// Append log message with timestamp
+        /// </summary>
+        public void AppendLog(string message, Color color)
+        {
+            if (rtbLog == null) return;
+            if (InvokeRequired) { BeginInvoke(new Action(() => AppendLog(message, color))); return; }
+            if (rtbLog.TextLength > 60000) rtbLog.Clear();
+            rtbLog.SelectionStart = rtbLog.TextLength;
+            rtbLog.SelectionColor = color;
+            rtbLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}\n");
+            rtbLog.ScrollToCaret();
+        }
+
+        /// <summary>
+        /// Get current style configuration
+        /// </summary>
+        public CatalogStyle GetCurrentStyle()
+        {
+            return _currentStyle;
+        }
+
+        /// <summary>
+        /// Get current block count
+        /// </summary>
+        public int GetBlockCount()
+        {
+            return _currentResult?.Blocks?.Count ?? 0;
+        }
+
+        /// <summary>
+        /// Get current block data result (for InsertPointCommand)
+        /// </summary>
+        public BlockDataResult GetCurrentBlockData()
+        {
+            if (_currentResult == null) return null;
+
+            // Convert ExtractionResult to BlockDataResult
+            var result = new BlockDataResult
+            {
+                AllTags = _currentResult.AllTags,
+                BlockNames = _currentResult.Blocks.Select(b => b.BlockName).Distinct().ToList(),
+                LayerNames = new List<string>()
+            };
+
+            // Convert AttributeBlockData to BlockData
+            foreach (var attrBlock in _currentResult.Blocks)
+            {
+                var blockData = new BlockData
+                {
+                    BlockName = attrBlock.BlockName,
+                    ObjectId = attrBlock.BlockId,
+                    Attributes = attrBlock.Attributes?.Select(kv => new BlockAttribute { Tag = kv.Key, Value = kv.Value }).ToList()
+                        ?? new List<BlockAttribute>()
+                };
+                result.Blocks.Add(blockData);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Get current merge configuration
+        /// </summary>
+        public MergeConfig GetCurrentMergeConfig()
+        {
+            return new MergeConfig
+            {
+                EnableMerge = _currentStyle.MergeStrategy == MergeStrategy.PrefixConsecutive,
+                Criterion = MergeCriterion.Prefix,
+                GroupSymbol = "-",
+                RangeSymbol = "~"
+            };
+        }
+
+        /// <summary>
+        /// Get layout radio button state
+        /// </summary>
+        public bool GetLayoutRadioState()
+        {
+            return radLayout != null && radLayout.Checked;
+        }
+
+        /// <summary>
+        /// Direct generate (for command callback)
+        /// </summary>
+        public void DoGenerateCatalogDirect()
+        {
+            if (_currentResult == null || _currentResult.Blocks.Count == 0)
+            {
+                AppendLog("没有可生成的块数据", Theme.Warning);
+                return;
+            }
+
+            try
+            {
+                var sortedBlocks = _sortEngine.Sort(_currentResult.Blocks, SortEngine.SortType.SelectionOrder);
+
+                string targetLayout = null;
+                if (radLayout.Checked && cmbLayoutName.SelectedItem != null)
+                {
+                    targetLayout = cmbLayoutName.SelectedItem.ToString();
+                }
+
+                MergeConfig mergeConfig = null;
+                if (chkMergeInGenerate.Checked || _currentStyle.MergeStrategy == MergeStrategy.PrefixConsecutive)
+                {
+                    mergeConfig = new MergeConfig
+                    {
+                        EnableMerge = true,
+                        Criterion = MergeCriterion.Prefix,
+                        GroupSymbol = "-",
+                        RangeSymbol = "~"
+                    };
+                }
+
+                var pos = Plugin._pendingInsertPoint ?? new Point3d(0, 0, 0);
+                var tableId = _generator.GenerateTable(sortedBlocks, _currentStyle, mergeConfig, pos, targetLayout);
+                AppendLog("目录已生成", Theme.Success);
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"生成失败: {ex.Message}", Theme.Error);
+            }
+        }
+
+        #endregion
+    }
+}

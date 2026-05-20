@@ -1,0 +1,75 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <OutputType>Library</OutputType>
+    <PlatformTarget>x64</PlatformTarget>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <RootNamespace>BlockCatalogPlugin</RootNamespace>
+    <AssemblyName>BlockCatalogPlugin</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="AcCoreMgd">
+      <HintPath>$(CadRootForBuild)\accoremgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="AcDbMgd">
+      <HintPath>$(CadRootForBuild)\acdbmgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="AcMgd">
+      <HintPath>$(CadRootForBuild)\acmgd.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="AcWindows">
+      <HintPath>$(CadRootForBuild)\AcWindows.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="BlockCatalogPlugin.cs" />
+    <Compile Include="UI\BlockCatalogPanel.cs" />
+    <Compile Include="UI\AddColumnDialog.cs" />
+    <Compile Include="UI\SequenceConfigDialog.cs" />
+    <Compile Include="UI\BatchModifyDialog.cs" />
+    <Compile Include="UI\CatalogPreviewDialog.cs" />
+    <Compile Include="UI\StyleSettingsDialog.cs" />
+    <Compile Include="UI\ThemeConfig.cs" />
+    <Compile Include="UI\DpiHelper.cs" />
+    <Compile Include="BlockExtractor.cs" />
+    <Compile Include="CatalogExtractor.cs" />
+    <Compile Include="BlockDataResult.cs" />
+    <Compile Include="CatalogGenerator.cs" />
+    <Compile Include="NumberSequence.cs" />
+    <Compile Include="SortEngine.cs" />
+    <Compile Include="SuffixPatternEngine.cs" />
+    <Compile Include="AttributeModifier.cs" />
+    <Compile Include="BatchAttributeModifier.cs" />
+    <Compile Include="UI\BatchProcessingPanel.cs" />
+    <Compile Include="BatchSummaryGenerator.cs" />
+    <Compile Include="BatchDwgProcessor.cs" />
+    <Compile Include="FrameSelector.cs" />
+    <Compile Include="TemplateManager.cs" />
+    <Compile Include="StyleTemplateManager.cs" />
+    <Compile Include="CatalogStyle.cs" />
+    <Compile Include="StyleJsonConverter.cs" />
+    <Compile Include="UserPreferences.cs" />
+    <Compile Include="InsertPointCommand.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+
+  <Target Name="CopyToDeploy" AfterTargets="Build">
+    <Copy SourceFiles="$(OutputPath)BlockCatalogPlugin.dll" DestinationFiles="$(MSBuildProjectDirectory)\..\wjl tools box\deploy\plugins\BlockCatalogPlugin.dll" />
+  </Target>
+
+</Project>
