@@ -75,7 +75,7 @@ namespace BlockCatalogPlugin
                             if (ar.Tag.Equals(targetTag, StringComparison.OrdinalIgnoreCase))
                             {
                                 ar.TextString = targetValue;
-                                ar.UpdateField(); // 强制刷新图面显示
+                                // 注：UpdateField() 在 AutoCAD 2014 不可用，TextString 赋值后 CAD 会自动刷新
                                 tagFound = true;
                                 break; // 找到匹配的Tag后跳出
                             }
@@ -163,11 +163,11 @@ namespace BlockCatalogPlugin
         }
 
         /// <summary>
-        /// 创建编号生成器
+        /// 根据数字位数构建模板字符串
         /// </summary>
-        private NumberSequence CreateNumberSequence(string prefix, string suffix, int startNum, int numLength)
+        private static string BuildTemplate(int numLength)
         {
-            string template = numLength switch
+            return numLength switch
             {
                 1 => "{n}",
                 2 => "{nn}",
@@ -175,10 +175,16 @@ namespace BlockCatalogPlugin
                 4 => "{nnnn}",
                 _ => "{nn}"
             };
+        }
 
+        /// <summary>
+        /// 创建编号生成器
+        /// </summary>
+        private NumberSequence CreateNumberSequence(string prefix, string suffix, int startNum, int numLength)
+        {
             return new NumberSequence
             {
-                Template = template,
+                Template = BuildTemplate(numLength),
                 StartNum = startNum,
                 Step = 1,
                 Prefix = prefix,
@@ -196,19 +202,9 @@ namespace BlockCatalogPlugin
             int startNum = 1,
             int numLength = 2)
         {
-            // 根据 numLength 构建模板
-            string template = numLength switch
-            {
-                1 => "{n}",
-                2 => "{nn}",
-                3 => "{nnn}",
-                4 => "{nnnn}",
-                _ => "{nn}"
-            };
-
             var seq = new NumberSequence
             {
-                Template = template,
+                Template = BuildTemplate(numLength),
                 StartNum = startNum,
                 Step = 1,
                 Prefix = prefix,

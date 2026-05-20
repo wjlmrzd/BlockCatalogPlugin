@@ -722,6 +722,225 @@ namespace BlockCatalogPlugin.UI
             AppendLog("已清除数据", Theme.TextDim);
         }
 
+        private void ResetPanel()
+        {
+            // 重置缀参数控件
+            txtSuffixStart.Text = "1";
+            txtSuffixLength.Text = "2";
+            txtSuffixPrefix.Text = "";
+            txtSuffixSuffix.Text = "";
+            chkSuffixContinuous.Checked = true;
+
+            // 重置排序选项
+            radSortTB_LR.Checked = true;
+            chkReverse.Checked = false;
+
+            // 重置表格样式控件
+            numFontHeight.Value = 3.5m;
+            numRowHeight.Value = 5m;
+            chkShowHeader.Checked = true;
+            txtColumnFormula.Text = "20+40+60";
+            txtSpacingExpression.Text = "5";
+            radModelSpace.Checked = true;
+
+            // 重置下拉框
+            if (cmbBlockNameFilter != null)
+            {
+                cmbBlockNameFilter.Items.Clear();
+                cmbBlockNameFilter.Items.Add("(全部)");
+                cmbBlockNameFilter.SelectedIndex = 0;
+            }
+
+            // 清除数据
+            ClearData();
+
+            AppendLog("面板已重置", Theme.Success);
+        }
+
+        private void ImportSettings()
+        {
+            using (var dlg = new SaveFileDialog())
+            {
+                dlg.Filter = "JSON 文件 (*.json)|*.json|所有文件 (*.*)|*.*";
+                dlg.Title = "导入设置";
+                dlg.DefaultExt = "json";
+                dlg.FileName = "BlockCatalogSettings.json";
+
+                if (dlg.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        string json = System.IO.File.ReadAllText(dlg.FileName);
+                        var settings = System.Text.Json.JsonSerializer.Deserialize<PanelSettings>(json);
+                        if (settings != null)
+                        {
+                            ApplySettings(settings);
+                            AppendLog($"已导入设置: {dlg.FileName}", Theme.Success);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AppendLog($"导入失败: {ex.Message}", Theme.Error);
+                    }
+                }
+            }
+        }
+
+        private void ExportSettings()
+        {
+            using (var dlg = new SaveFileDialog())
+            {
+                dlg.Filter = "JSON 文件 (*.json)|*.json|所有文件 (*.*)|*.*";
+                dlg.Title = "导出设置";
+                dlg.DefaultExt = "json";
+                dlg.FileName = "BlockCatalogSettings.json";
+
+                if (dlg.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        var settings = CollectSettings();
+                        var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+                        string json = System.Text.Json.JsonSerializer.Serialize(settings, options);
+                        System.IO.File.WriteAllText(dlg.FileName, json);
+                        AppendLog($"已导出设置: {dlg.FileName}", Theme.Success);
+                    }
+                    catch (Exception ex)
+                    {
+                        AppendLog($"导出失败: {ex.Message}", Theme.Error);
+                    }
+                }
+            }
+        }
+
+        private void FilterBlocksByName()
+        {
+            if (_currentResult == null || dgvBlocks == null) return;
+
+            string selectedFilter = cmbBlockNameFilter?.SelectedItem?.ToString() ?? "(全部)";
+
+            if (string.IsNullOrEmpty(selectedFilter) || selectedFilter == "(全部)")
+            {
+                // 显示所有块
+                RefreshDataGridView();
+            }
+            else
+            {
+                // 按块名筛选
+                var filteredBlocks = _currentResult.Blocks.Where(b => b.BlockName == selectedFilter).ToList();
+                dgvBlocks.DataSource = null;
+                dgvBlocks.Columns.Clear();
+
+                var engine = new SuffixPatternEngine();
+                int startNum = 1, numLength = 2;
+                int.TryParse(txtSuffixStart.Text, out startNum);
+                int.TryParse(txtSuffixLength.Text, out numLength);
+                string prefix = txtSuffixPrefix.Text ?? "";
+                string suffix = txtSuffixSuffix.Text ?? "";
+                var previewValues = engine.GenerateNumberSequence(filteredBlocks.Count, prefix, suffix, startNum, numLength);
+
+                dgvBlocks.DataSource = filteredBlocks.Select((b, idx) => new
+                {
+                    块名 = b.BlockName,
+                    图号 = b.GetAttribute("XH") ?? b.GetAttribute("TH") ?? "",
+                    图名 = b.GetAttribute("TM") ?? "",
+                    幅面 = b.GetAttribute("FM") ?? "",
+                    X = Math.Round(b.Position.X, 1),
+                    Y = Math.Round(b.Position.Y, 1),
+                    当前提取值 = b.GetAttribute("XH") ?? b.GetAttribute("TH") ?? "",
+                    重编预览值 = idx < previewValues.Count ? previewValues[idx] : ""
+                }).ToList();
+            }
+        }
+
+        /// <summary>
+        /// 收集当前面板设置
+        /// </summary>
+        private PanelSettings CollectSettings()
+        {
+            return new PanelSettings
+            {
+                SuffixStart = txtSuffixStart.Text,
+                SuffixLength = txtSuffixLength.Text,
+                SuffixPrefix = txtSuffixPrefix.Text,
+                SuffixSuffix = txtSuffixSuffix.Text,
+                SuffixContinuous = chkSuffixContinuous.Checked,
+                SortTypeIndex = GetSelectedSortTypeIndex(),
+                Reverse = chkReverse.Checked,
+                FontHeight = (double)numFontHeight.Value,
+                RowHeight = (double)numRowHeight.Value,
+                ShowHeader = chkShowHeader.Checked,
+                ColumnFormula = txtColumnFormula.Text,
+                SpacingExpression = txtSpacingExpression.Text,
+                OutputToLayout = radLayout.Checked
+            };
+        }
+
+        /// <summary>
+        /// 应用设置到面板
+        /// </summary>
+        private void ApplySettings(PanelSettings settings)
+        {
+            if (settings == null) return;
+
+            txtSuffixStart.Text = settings.SuffixStart ?? "1";
+            txtSuffixLength.Text = settings.SuffixLength ?? "2";
+            txtSuffixPrefix.Text = settings.SuffixPrefix ?? "";
+            txtSuffixSuffix.Text = settings.SuffixSuffix ?? "";
+            chkSuffixContinuous.Checked = settings.SuffixContinuous;
+
+            SetSelectedSortType(settings.SortTypeIndex);
+            chkReverse.Checked = settings.Reverse;
+
+            numFontHeight.Value = (decimal)(settings.FontHeight > 0 ? settings.FontHeight : 3.5);
+            numRowHeight.Value = (decimal)(settings.RowHeight > 0 ? settings.RowHeight : 5);
+            chkShowHeader.Checked = settings.ShowHeader;
+            txtColumnFormula.Text = settings.ColumnFormula ?? "20+40+60";
+            txtSpacingExpression.Text = settings.SpacingExpression ?? "5";
+
+            if (settings.OutputToLayout)
+                radLayout.Checked = true;
+            else
+                radModelSpace.Checked = true;
+        }
+
+        private int GetSelectedSortTypeIndex()
+        {
+            if (radSortLR_TB.Checked) return 0;
+            if (radSortTB_LR.Checked) return 1;
+            if (radSortSelection.Checked) return 2;
+            if (radSortNumeric.Checked) return 3;
+            return 1;
+        }
+
+        private void SetSelectedSortType(int index)
+        {
+            radSortLR_TB.Checked = index == 0;
+            radSortTB_LR.Checked = index == 1;
+            radSortSelection.Checked = index == 2;
+            radSortNumeric.Checked = index == 3;
+        }
+
+        /// <summary>
+        /// 面板设置数据结构（用于导入/导出）
+        /// </summary>
+        private class PanelSettings
+        {
+            public string SuffixStart { get; set; } = "1";
+            public string SuffixLength { get; set; } = "2";
+            public string SuffixPrefix { get; set; } = "";
+            public string SuffixSuffix { get; set; } = "";
+            public bool SuffixContinuous { get; set; } = true;
+            public int SortTypeIndex { get; set; } = 1;
+            public bool Reverse { get; set; } = false;
+            public double FontHeight { get; set; } = 3.5;
+            public double RowHeight { get; set; } = 5;
+            public bool ShowHeader { get; set; } = true;
+            public string ColumnFormula { get; set; } = "20+40+60";
+            public string SpacingExpression { get; set; } = "5";
+            public bool OutputToLayout { get; set; } = false;
+        }
+
         private void RemoveSelectedBlock()
         {
             if (dgvBlocks.SelectedRows.Count > 0 && _currentResult != null)
@@ -775,15 +994,58 @@ namespace BlockCatalogPlugin.UI
             dgvBlocks.DataSource = null;
             dgvBlocks.Columns.Clear();
 
-            dgvBlocks.DataSource = _currentResult.Blocks.Select(b => new
+            // 生成预览值序列
+            int startNum = 1, numLength = 2;
+            int.TryParse(txtSuffixStart.Text, out startNum);
+            int.TryParse(txtSuffixLength.Text, out numLength);
+            string prefix = txtSuffixPrefix.Text ?? "";
+            string suffix = txtSuffixSuffix.Text ?? "";
+
+            var engine = new SuffixPatternEngine();
+            var previewValues = engine.GenerateNumberSequence(_currentResult.Blocks.Count, prefix, suffix, startNum, numLength);
+
+            dgvBlocks.DataSource = _currentResult.Blocks.Select((b, idx) => new
             {
                 块名 = b.BlockName,
                 图号 = b.GetAttribute("XH") ?? b.GetAttribute("TH") ?? "",
                 图名 = b.GetAttribute("TM") ?? "",
                 幅面 = b.GetAttribute("FM") ?? "",
                 X = Math.Round(b.Position.X, 1),
-                Y = Math.Round(b.Position.Y, 1)
+                Y = Math.Round(b.Position.Y, 1),
+                当前提取值 = b.GetAttribute("XH") ?? "",
+                重编预览值 = idx < previewValues.Count ? previewValues[idx] : ""
             }).ToList();
+
+            // 刷新下拉框的块名列表
+            RefreshBlockNameFilter();
+        }
+
+        private void RefreshBlockNameFilter()
+        {
+            if (cmbBlockNameFilter == null || _currentResult == null) return;
+
+            string currentSelection = cmbBlockNameFilter.SelectedItem?.ToString() ?? "(全部)";
+
+            cmbBlockNameFilter.Items.Clear();
+            cmbBlockNameFilter.Items.Add("(全部)");
+
+            var distinctNames = _currentResult.Blocks
+                .Select(b => b.BlockName)
+                .Distinct()
+                .OrderBy(n => n)
+                .ToList();
+
+            cmbBlockNameFilter.Items.AddRange(distinctNames.ToArray());
+
+            // 恢复之前的选中项
+            if (!string.IsNullOrEmpty(currentSelection) && cmbBlockNameFilter.Items.Contains(currentSelection))
+            {
+                cmbBlockNameFilter.SelectedItem = currentSelection;
+            }
+            else
+            {
+                cmbBlockNameFilter.SelectedIndex = 0;
+            }
         }
 
         private void DgvBlocks_MouseDown(object sender, MouseEventArgs e)
@@ -922,9 +1184,32 @@ namespace BlockCatalogPlugin.UI
                 AppendLog("没有可同步的数据", Theme.Warning);
                 return;
             }
-            AppendLog("同步属性到图纸...", Theme.TextDim);
-            // TODO: 实现属性同步
-            AppendLog("属性同步功能开发中", Theme.Warning);
+
+            if (!int.TryParse(txtSuffixStart.Text, out int startNum)) startNum = 1;
+            if (!int.TryParse(txtSuffixLength.Text, out int numLength)) numLength = 2;
+            string prefix = txtSuffixPrefix.Text ?? "";
+            string suffix = txtSuffixSuffix.Text ?? "";
+
+            AppendLog($"正在同步属性到图纸...", Theme.TextDim);
+
+            var engine = new SuffixPatternEngine();
+            bool success = engine.BulkRenameAttributes(
+                _currentResult.Blocks,
+                "XH",
+                prefix,
+                suffix,
+                startNum,
+                numLength);
+
+            if (success)
+            {
+                RefreshDataGridView();
+                AppendLog($"属性同步完成", Theme.Success);
+            }
+            else
+            {
+                AppendLog("属性同步失败", Theme.Error);
+            }
         }
 
         private void ShowPreview()
