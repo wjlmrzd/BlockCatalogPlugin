@@ -1,20 +1,24 @@
 {
   "format": 1,
   "restore": {
-    "D:\\BaiduSyncdisk\\编译文件同步\\BlockCatalogPlugin\\BlockCatalogPlugin.csproj": {}
+    "I:\\BaiduSyncdisk\\编译文件同步\\BlockCatalogPlugin\\BlockCatalogPlugin.csproj": {}
   },
   "projects": {
-    "D:\\BaiduSyncdisk\\编译文件同步\\BlockCatalogPlugin\\BlockCatalogPlugin.csproj": {
+    "I:\\BaiduSyncdisk\\编译文件同步\\BlockCatalogPlugin\\BlockCatalogPlugin.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\BaiduSyncdisk\\编译文件同步\\BlockCatalogPlugin\\BlockCatalogPlugin.csproj",
+        "projectUniqueName": "I:\\BaiduSyncdisk\\编译文件同步\\BlockCatalogPlugin\\BlockCatalogPlugin.csproj",
         "projectName": "BlockCatalogPlugin",
-        "projectPath": "D:\\BaiduSyncdisk\\编译文件同步\\BlockCatalogPlugin\\BlockCatalogPlugin.csproj",
-        "packagesPath": "C:\\Users\\Administrator\\.nuget\\packages\\",
-        "outputPath": "D:\\BaiduSyncdisk\\编译文件同步\\BlockCatalogPlugin\\obj\\",
+        "projectPath": "I:\\BaiduSyncdisk\\编译文件同步\\BlockCatalogPlugin\\BlockCatalogPlugin.csproj",
+        "packagesPath": "C:\\Users\\y\\.nuget\\packages\\",
+        "outputPath": "I:\\BaiduSyncdisk\\编译文件同步\\BlockCatalogPlugin\\obj\\",
         "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "E:\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+        ],
         "configFilePaths": [
-          "C:\\Users\\Administrator\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Users\\y\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
         "originalTargetFrameworks": [
@@ -51,7 +55,7 @@
               "version": "[9.0.0, )"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.202\\RuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.201\\RuntimeIdentifierGraph.json"
         }
       }
     }

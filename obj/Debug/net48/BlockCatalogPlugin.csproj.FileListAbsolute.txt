@@ -22,3 +22,17 @@ D:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\obj\Debug\net48\BlockCat.
 D:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\obj\Debug\net48\BlockCatalogPlugin.dll
 D:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\obj\Debug\net48\BlockCatalogPlugin.pdb
 D:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\obj\Debug\net48\BlockCatalogPlugin.sourcelink.json
+I:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\obj\Debug\net48\BlockCatalogPlugin.sourcelink.json
+I:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\bin\Debug\net48\BlockCatalogPlugin.dll
+I:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\bin\Debug\net48\BlockCatalogPlugin.pdb
+I:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\bin\Debug\net48\Microsoft.Bcl.AsyncInterfaces.dll
+I:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\bin\Debug\net48\System.Buffers.dll
+I:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\bin\Debug\net48\System.IO.Pipelines.dll
+I:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\bin\Debug\net48\System.Memory.dll
+I:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\bin\Debug\net48\System.Numerics.Vectors.dll
+I:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\bin\Debug\net48\System.Runtime.CompilerServices.Unsafe.dll
+I:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\bin\Debug\net48\System.Text.Encodings.Web.dll
+I:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\bin\Debug\net48\System.Text.Json.dll
+I:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\bin\Debug\net48\System.Threading.Tasks.Extensions.dll
+I:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\bin\Debug\net48\System.ValueTuple.dll
+I:\BaiduSyncdisk\编译文件同步\BlockCatalogPlugin\obj\Debug\net48\BlockCat.5325B956.Up2Date
