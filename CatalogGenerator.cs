@@ -572,57 +572,6 @@ namespace BlockCatalogPlugin
         }
 
         /// <summary>
-        /// 创建单行文字（支持居中和自动适应列宽）
-        /// </summary>
-        /// <param name="text">文字内容</param>
-        /// <param name="position">位置（列的起始位置）</param>
-        /// <param name="height">字高</param>
-        /// <param name="bold">是否加粗</param>
-        /// <param name="colWidth">列宽（用于居中和自动适应）</param>
-        /// <param name="autoFit">是否自动适应列宽</param>
-        /// <returns>警告信息（如果有）</returns>
-        private string CreateText(string text, Point3d position, double height, bool bold, double colWidth = 0, bool autoFit = true)
-        {
-            if (string.IsNullOrEmpty(text)) text = "";
-
-            // 计算文字宽度（粗略估算：每个字符约 0.7 倍字高）
-            double textWidth = text.Length * height * 0.7;
-            string warning = null;
-            double actualHeight = height;
-
-            // 如果启用了自动适应且列宽足够大，则检测是否需要缩小字体
-            if (autoFit && colWidth > 0 && textWidth > colWidth * 0.9)
-            {
-                // 缩小字体以适应列宽（留 10% 边距）
-                actualHeight = height * (colWidth * 0.9) / textWidth;
-                actualHeight = Math.Max(actualHeight, 1.0); // 最小字高 1.0
-
-                if (actualHeight < height * 0.5)
-                {
-                    warning = $"文字过小: {text.Substring(0, Math.Min(8, text.Length))}...";
-                }
-            }
-
-            // 计算居中位置
-            double offsetX = colWidth > 0 ? colWidth / 2.0 : 2;
-
-            var dbText = new DBText
-            {
-                TextString = text,
-                Position = new Point3d(position.X + offsetX, position.Y, position.Z),
-                Height = actualHeight,
-                HorizontalMode = colWidth > 0 ? TextHorizontalMode.TextCenter : TextHorizontalMode.TextLeft,
-                VerticalMode = TextVerticalMode.TextBottom,
-                AlignmentPoint = new Point3d(position.X + offsetX, position.Y, position.Z)
-            };
-            if (bold)
-            {
-                dbText.WidthFactor = 1.2;
-            }
-            return warning;
-        }
-
-        /// <summary>
         /// 从BlockData获取属性值
         /// </summary>
         private string GetBlockAttribute(BlockData block, string tag)

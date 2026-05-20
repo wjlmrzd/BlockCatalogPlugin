@@ -94,7 +94,6 @@ namespace BlockCatalogPlugin.UI
         // 列宽/行高拖拽相关
         private bool _isResizingColumn = false;
         private bool _isResizingRow = false;
-        private bool _isPickingColumnWidth = false; // 是否处于拖拽获取列宽模式
         private int _selectedColumnIndexForPick = -1; // 用于拖拽获取列宽时指定哪一列
 
         public BlockCatalogPanel()
@@ -1291,7 +1290,6 @@ namespace BlockCatalogPlugin.UI
                 AppendLog("请先在列表中选择要设置宽度的列", Theme.Warning);
                 return;
             }
-            _isPickingColumnWidth = true;
             _selectedColumnIndexForPick = lstColumns.SelectedIndex;
             AppendLog("请在CAD中框选两个点来获取列宽...", Theme.Primary);
             ExecuteCommand("_BCPICKCOLWIDTH");
@@ -1302,7 +1300,6 @@ namespace BlockCatalogPlugin.UI
         /// </summary>
         internal void ApplyPickedColumnWidth(double width)
         {
-            _isPickingColumnWidth = false;
             if (width <= 0)
             {
                 AppendLog("列宽无效", Theme.Warning);
