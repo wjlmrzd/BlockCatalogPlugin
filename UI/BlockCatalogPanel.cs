@@ -189,9 +189,7 @@ namespace BlockCatalogPlugin.UI
                     {
                         _preferences.ShortcutKey = key;
                         PreferencesManager.Instance.Save();
-                        // 重新注册快捷键
-                        Plugin.RegisterShortcutKey();
-                        AppendLog($"快捷键已保存并注册: {key}", Theme.Success);
+                        AppendLog($"快捷键已保存: {key}（重启CAD后生效）", Theme.Success);
                     }
                     else
                     {
@@ -209,8 +207,6 @@ namespace BlockCatalogPlugin.UI
                 {
                     _preferences.ShortcutKey = key;
                     PreferencesManager.Instance.Save();
-                    // 重新注册快捷键
-                    Plugin.RegisterShortcutKey();
                 }
                 else
                 {

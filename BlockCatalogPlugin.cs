@@ -51,34 +51,12 @@ namespace BlockCatalogPlugin
         }
 
         /// <summary>
-        /// 注册快捷键别名到 AutoCAD（使用别名命令）
+        /// 注册快捷键别名（已禁用，不再自动注册以避免干扰CAD选择操作）
         /// </summary>
         internal static void RegisterShortcutKey()
         {
-            try
-            {
-                string shortcut = PreferencesManager.Instance.Preferences.ShortcutKey ?? "bca";
-                // 验证快捷键只包含有效字符
-                if (!IsValidShortcutKey(shortcut))
-                {
-                    shortcut = "bca"; // 默认值
-                }
-
-                var doc = Application.DocumentManager.MdiActiveDocument;
-                if (doc == null) return;
-
-                // 使用 -alias 命令注册别名
-                // 先删除可能存在的旧别名，再添加新别名
-                string deleteCmd = $"-alias delete {shortcut} ";
-                string addCmd = $"-alias add {shortcut} *BLOCKCATALOG ";
-
-                doc.SendStringToExecute(deleteCmd, true, false, true);
-                doc.SendStringToExecute(addCmd, true, false, true);
-            }
-            catch (System.Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"注册快捷键失败: {ex.Message}");
-            }
+            // 已禁用：-alias 命令在部分 AutoCAD 版本不可用，会导致选择操作被干扰
+            // 快捷键功能暂时搁置，用户可使用 BLOCKCATALOG 命令
         }
 
         /// <summary>
