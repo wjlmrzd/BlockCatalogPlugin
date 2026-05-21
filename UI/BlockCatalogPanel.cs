@@ -1756,7 +1756,7 @@ namespace BlockCatalogPlugin.UI
             var parenPattern = System.Text.RegularExpressions.Regex.Match(s, @"^(.+?)（(.+)）$");
             if (parenPattern.Success)
             {
-                return (parenPattern.Groups[1].Value + "（" + parenPattern.Groups[2].Value + "）", "");
+                return (parenPattern.Groups[1].Value, parenPattern.Groups[2].Value);
             }
 
             // 尝试提取末尾的数字编号：如 -01、_2、03
@@ -1919,8 +1919,8 @@ namespace BlockCatalogPlugin.UI
 
         private SortEngine.SortType GetSelectedSortType()
         {
-            if (radSortLR_TB.Checked) return SortEngine.SortType.TopBottom_LeftRight;
-            if (radSortTB_LR.Checked) return SortEngine.SortType.LeftRight_TopBottom;
+            if (radSortLR_TB.Checked) return SortEngine.SortType.LeftRight_TopBottom;
+            if (radSortTB_LR.Checked) return SortEngine.SortType.TopBottom_LeftRight;
             if (radSortSelection.Checked) return SortEngine.SortType.SelectionOrder;
             if (radSortNumeric.Checked) return SortEngine.SortType.NumericOrder;
             return SortEngine.SortType.SelectionOrder;

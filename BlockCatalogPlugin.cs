@@ -30,16 +30,25 @@ namespace BlockCatalogPlugin
             if (_initialized) return;
             _initialized = true;
 
-            AppDomain.CurrentDomain.AssemblyResolve += OnCadAssemblyResolve;
+            try
+            {
+                AppDomain.CurrentDomain.AssemblyResolve += OnCadAssemblyResolve;
 
-            TemplateManager.Instance.CreatePresetTemplates();
+                TemplateManager.Instance.CreatePresetTemplates();
 
-            // 注册文档打开事件，在文档激活后注册快捷键（仅在UI需要时调用，不在启动时自动注册）
-            Application.DocumentManager.DocumentActivated += OnDocumentActivated;
+                // 注册文档打开事件，在文档激活后注册快捷键（仅在UI需要时调用，不在启动时自动注册）
+                Application.DocumentManager.DocumentActivated += OnDocumentActivated;
 
-            Editor ed = Application.DocumentManager.MdiActiveDocument?.Editor;
-            string shortcut = PreferencesManager.Instance.Preferences.ShortcutKey ?? "bca";
-            ed?.WriteMessage($"\n✔ 目录生成插件 V2.0 已加载 | 命令: BLOCKCATALOG | 快捷键: {shortcut}");
+                Editor ed = Application.DocumentManager.MdiActiveDocument?.Editor;
+                string shortcut = PreferencesManager.Instance.Preferences.ShortcutKey ?? "bca";
+                ed?.WriteMessage($"\n✔ 目录生成插件 V2.0 已加载 | 命令: BLOCKCATALOG | 快捷键: {shortcut}");
+            }
+            catch (System.Exception ex)
+            {
+                // 捕获加载异常，确保能看到错误信息
+                var ed = Application.DocumentManager.MdiActiveDocument?.Editor;
+                ed?.WriteMessage($"\n[ERROR] 插件初始化失败: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
+            }
         }
 
         /// <summary>

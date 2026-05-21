@@ -78,33 +78,29 @@ namespace BlockCatalogPlugin
             // Step 1: 先按 Y 从大到小排序
             var sortedByY = blocks.OrderByDescending(b => b.Position.Y).ToList();
 
-            // Step 2: 动态冒泡分组，组内按 X 排序（使用 rowBaseY 防止链条漂移）
+            // Step 2: 动态冒泡分组，组内按 X 排序（比较前一个块，保证传递性）
             var result = new List<AttributeBlockData>();
             var currentRow = new List<AttributeBlockData>();
-            double? rowBaseY = null; // 锁定行基准，防止链条漂移
+            AttributeBlockData prevBlock = null;
 
             for (int i = 0; i < sortedByY.Count; i++)
             {
                 var block = sortedByY[i];
 
-                if (!rowBaseY.HasValue)
+                if (prevBlock != null)
                 {
-                    rowBaseY = block.Position.Y;
-                }
-                else
-                {
-                    // 严格与本行的起始基准 Y 进行比对
-                    double yDiff = Math.Abs(block.Position.Y - rowBaseY.Value);
+                    // 与前一块的 Y 比较，保证传递性：若 A~B 且 B~C 则 A~C
+                    double yDiff = Math.Abs(block.Position.Y - prevBlock.Position.Y);
                     if (yDiff >= tolerance)
                     {
                         // Y 差超过容差，开启新行
                         result.AddRange(currentRow.OrderBy(x => x.Position.X));
                         currentRow.Clear();
-                        rowBaseY = block.Position.Y; // 换行，重置基准 Y
                     }
                 }
 
                 currentRow.Add(block);
+                prevBlock = block;
             }
 
             // 处理最后一行
@@ -127,33 +123,29 @@ namespace BlockCatalogPlugin
             // Step 1: 先按 X 从小到大排序
             var sortedByX = blocks.OrderBy(b => b.Position.X).ToList();
 
-            // Step 2: 动态冒泡分组，组内按 Y 排序（使用 colBaseX 防止链条漂移）
+            // Step 2: 动态冒泡分组，组内按 Y 排序（比较前一个块，保证传递性）
             var result = new List<AttributeBlockData>();
             var currentCol = new List<AttributeBlockData>();
-            double? colBaseX = null; // 锁定列基准，防止链条漂移
+            AttributeBlockData prevBlock = null;
 
             for (int i = 0; i < sortedByX.Count; i++)
             {
                 var block = sortedByX[i];
 
-                if (!colBaseX.HasValue)
+                if (prevBlock != null)
                 {
-                    colBaseX = block.Position.X;
-                }
-                else
-                {
-                    // 严格与本列的起始基准 X 进行比对
-                    double xDiff = Math.Abs(block.Position.X - colBaseX.Value);
+                    // 与前一块的 X 比较，保证传递性
+                    double xDiff = Math.Abs(block.Position.X - prevBlock.Position.X);
                     if (xDiff >= tolerance)
                     {
                         // X 差超过容差，开启新列
                         result.AddRange(currentCol.OrderByDescending(y => y.Position.Y));
                         currentCol.Clear();
-                        colBaseX = block.Position.X; // 换列，重置基准 X
                     }
                 }
 
                 currentCol.Add(block);
+                prevBlock = block;
             }
 
             // 处理最后一列
