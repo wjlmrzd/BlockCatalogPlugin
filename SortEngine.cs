@@ -70,7 +70,7 @@ namespace BlockCatalogPlugin
         /// <summary>
         /// 上下左右排序 - 动态冒泡邻近容差分行法
         /// 1. 先按 Y 坐标从大到小排序（上方先出现）
-        /// 2. 遍历时若当前块 Y 与上一块 Y 差值绝对值 < tolerance，则认为同一横排
+        /// 2. 遍历时若当前块 Y 与当前行第一个块的 Y 差值绝对值 < tolerance，则认为同一横排
         /// 3. 同一排内按 X 从小到大排序（从左到右）
         /// </summary>
         private List<AttributeBlockData> SortByTopBottom_LeftRight(List<AttributeBlockData> blocks, double tolerance)
@@ -78,29 +78,31 @@ namespace BlockCatalogPlugin
             // Step 1: 先按 Y 从大到小排序
             var sortedByY = blocks.OrderByDescending(b => b.Position.Y).ToList();
 
-            // Step 2: 动态冒泡分组，组内按 X 排序（比较前一个块，保证传递性）
+            // Step 2: 动态冒泡分组，组内按 X 排序（与行首块比较，保证传递性）
             var result = new List<AttributeBlockData>();
             var currentRow = new List<AttributeBlockData>();
-            AttributeBlockData prevBlock = null;
+            AttributeBlockData rowAnchor = null;
 
             for (int i = 0; i < sortedByY.Count; i++)
             {
                 var block = sortedByY[i];
 
-                if (prevBlock != null)
+                if (rowAnchor != null)
                 {
-                    // 与前一块的 Y 比较，保证传递性：若 A~B 且 B~C 则 A~C
-                    double yDiff = Math.Abs(block.Position.Y - prevBlock.Position.Y);
+                    // 与当前行第一个块的 Y 比较（而非前一块），保证传递性
+                    double yDiff = Math.Abs(block.Position.Y - rowAnchor.Position.Y);
                     if (yDiff >= tolerance)
                     {
                         // Y 差超过容差，开启新行
                         result.AddRange(currentRow.OrderBy(x => x.Position.X));
                         currentRow.Clear();
+                        rowAnchor = null; // 新行尚未确定，等下一个块进来再设
                     }
                 }
 
                 currentRow.Add(block);
-                prevBlock = block;
+                if (rowAnchor == null)
+                    rowAnchor = block; // 行首块锚定
             }
 
             // 处理最后一行
@@ -115,7 +117,7 @@ namespace BlockCatalogPlugin
         /// <summary>
         /// 左右上下排序 - 动态冒泡邻近容差分列法
         /// 1. 先按 X 坐标从小到大排序（左边先出现）
-        /// 2. 遍历时若当前块 X 与上一块 X 差值绝对值 < tolerance，则认为同一纵列
+        /// 2. 遍历时若当前块 X 与当前列第一个块的 X 差值绝对值 < tolerance，则认为同一纵列
         /// 3. 同一列内按 Y 从大到小排序（从上到下）
         /// </summary>
         private List<AttributeBlockData> SortByLeftRight_TopBottom(List<AttributeBlockData> blocks, double tolerance)
@@ -123,29 +125,31 @@ namespace BlockCatalogPlugin
             // Step 1: 先按 X 从小到大排序
             var sortedByX = blocks.OrderBy(b => b.Position.X).ToList();
 
-            // Step 2: 动态冒泡分组，组内按 Y 排序（比较前一个块，保证传递性）
+            // Step 2: 动态冒泡分组，组内按 Y 排序（与列首块比较，保证传递性）
             var result = new List<AttributeBlockData>();
             var currentCol = new List<AttributeBlockData>();
-            AttributeBlockData prevBlock = null;
+            AttributeBlockData colAnchor = null;
 
             for (int i = 0; i < sortedByX.Count; i++)
             {
                 var block = sortedByX[i];
 
-                if (prevBlock != null)
+                if (colAnchor != null)
                 {
-                    // 与前一块的 X 比较，保证传递性
-                    double xDiff = Math.Abs(block.Position.X - prevBlock.Position.X);
+                    // 与当前列第一个块的 X 比较（而非前一块），保证传递性
+                    double xDiff = Math.Abs(block.Position.X - colAnchor.Position.X);
                     if (xDiff >= tolerance)
                     {
                         // X 差超过容差，开启新列
                         result.AddRange(currentCol.OrderByDescending(y => y.Position.Y));
                         currentCol.Clear();
+                        colAnchor = null; // 新列尚未确定，等下一个块进来再设
                     }
                 }
 
                 currentCol.Add(block);
-                prevBlock = block;
+                if (colAnchor == null)
+                    colAnchor = block; // 列首块锚定
             }
 
             // 处理最后一列

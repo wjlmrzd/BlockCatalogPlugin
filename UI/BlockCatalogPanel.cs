@@ -50,6 +50,17 @@ namespace BlockCatalogPlugin.UI
 
         private RichTextBox rtbLog;
         private Panel _canvasPanel;
+        private GroupBox _grpSort;       // 空间矩阵排序模式
+        private GroupBox _grpBuffer;     // 图形缓冲区
+        private GroupBox _grpSuffix;     // 缀参数
+        private GroupBox _grpFormula;    // 列宽表达式（列配置）
+        private GroupBox _grpOutput;     // 输出参数
+        private Label _lblSpacing;      // 间距公式标签
+        private Button _btnPreview;      // 预览目录表格
+        private Button _btnGenerate;     // 指定点绘制目录
+        private Button _btnSyncAttrs;   // 一键反向同步
+        private bool _isEditMode = false;
+        private int _grpSuffix_baseY;  // 记录 _grpSuffix 原始 Y（用于编辑模式压缩布局）
 
         private DataGridView dgvBlocks;
         private RadioButton radCatalogMode;
@@ -88,8 +99,14 @@ namespace BlockCatalogPlugin.UI
         private bool _isUpdatingFilter = false;
         private double _sortTolerance = 500.0; // 排序容差，默认500
         private CheckBox chkMergeSameName; // 合并相同前缀的图名/图号
-        private ListBox lstColumns; // 列管理列表框
+        private CheckedListBox lstColumns; // 列管理列表框（CheckedListBox，支持可见性切换和双击编辑）
         private ComboBox cmbAddColumn; // 添加列下拉框
+        private Dictionary<int, ColumnDef> _lstColumnMap = new Dictionary<int, ColumnDef>(); // 列表索引→ColumnDef 映射
+        private Button _btnRemove; // 删块按钮
+        private Button _btnMoveUp; // 上移按钮
+        private Button _btnMoveDown; // 下移按钮
+        private Button _btnReselect; // 重选按钮
+        private Button _btnRemoveColumn; // 删列按钮
 
         // 列宽/行高拖拽相关
         private bool _isResizingColumn = false;
@@ -220,13 +237,23 @@ namespace BlockCatalogPlugin.UI
             // === Canvas ===
             _canvasPanel = new Panel
             {
-                Bounds = new Rectangle(0, 50, 340, 630),
+                Bounds = new Rectangle(0, 50, 340, 590),
                 BackColor = Theme.Bg,
                 AutoScroll = true,
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             };
             BuildFixedLayoutCanvas();
             Controls.Add(_canvasPanel);
+
+            // === 底部工具栏（固定在面板底部，不随滚动）===
+            var bottomBar = new Panel
+            {
+                Location = new Point(10, 640),
+                Size = new Size(312, 36),
+                BackColor = Theme.Card
+            };
+            bottomBar.Controls.AddRange(new Control[] { btnReset, btnImport, btnExport });
+            Controls.Add(bottomBar);
 
             // === Log Panel ===
             var logPanel = new Panel
@@ -277,9 +304,9 @@ namespace BlockCatalogPlugin.UI
             // === Box 1: 总控模式与配置 ===
             var grpMode = new GroupBox
             {
-                Text = "总控模式与配置",
+                Text = "工作模式",
                 Location = new Point(leftX, curY),
-                Size = new Size(boxW, 85),
+                Size = new Size(boxW, 55),
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
                 FlatStyle = FlatStyle.Flat
@@ -302,109 +329,81 @@ namespace BlockCatalogPlugin.UI
                 ForeColor = Theme.Text,
                 BackColor = Theme.Card
             };
+            // 工作模式切换联动界面
+            radCatalogMode.CheckedChanged += (s, e) => { if (radCatalogMode.Checked) SetUIMode(false); };
+            radEditMode.CheckedChanged += (s, e) => { if (radEditMode.Checked) SetUIMode(true); };
             grpMode.Controls.Add(radCatalogMode);
             grpMode.Controls.Add(radEditMode);
 
-            btnReset = CreateFlatButton("重置面板", 12, 48, 75, Theme.Warning);
+            _canvasPanel.Controls.Add(grpMode);
+            curY += 65;
+
+            // 底部工具栏各按钮（稍后添加到 UserControl Controls 而非 scrollable canvas）
+            btnReset = CreateFlatButton("重置面板", 0, 4, 75, Theme.Warning);
+            btnReset.Height = 28;
             btnReset.Click += (s, e) => ResetPanel();
-            btnImport = CreateFlatButton("导入配置", 95, 48, 75, Theme.Primary);
+            btnImport = CreateFlatButton("导入配置", 82, 4, 75, Theme.Primary);
+            btnImport.Height = 28;
             btnImport.Click += (s, e) => ImportSettings();
-            btnExport = CreateFlatButton("导出当前", 178, 48, 75, Theme.AccentLight);
+            btnExport = CreateFlatButton("导出当前", 164, 4, 75, Theme.AccentLight);
+            btnExport.Height = 28;
             btnExport.Click += (s, e) => ExportSettings();
 
-            grpMode.Controls.Add(btnReset);
-            grpMode.Controls.Add(btnImport);
-            grpMode.Controls.Add(btnExport);
-
-            _canvasPanel.Controls.Add(grpMode);
-            curY += 95;
-
             // === Box 2: 空间矩阵排序模式 ===
-            var grpSort = new GroupBox
+            _grpSort = new GroupBox
             {
-                Text = "空间矩阵排序模式",
+                Text = "排序模式",
                 Location = new Point(leftX, curY),
-                Size = new Size(boxW, 100),
+                Size = new Size(boxW, 115),
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
                 FlatStyle = FlatStyle.Flat
             };
 
-            radSortTB_LR = new RadioButton
+            // 左子区：空间坐标排序
+            var sortSpatial = new Panel
             {
-                Text = "上下 → 左右",
-                Location = new Point(12, 20),
-                AutoSize = true,
-                Checked = true,
-                ForeColor = Theme.Text,
+                Location = new Point(8, 18),
+                Size = new Size(145, 90),
                 BackColor = Theme.Card
             };
-            radSortLR_TB = new RadioButton
-            {
-                Text = "左右 → 上下",
-                Location = new Point(12, 44),
-                AutoSize = true,
-                ForeColor = Theme.Text,
-                BackColor = Theme.Card
-            };
-            radSortSelection = new RadioButton
-            {
-                Text = "选择序",
-                Location = new Point(120, 20),
-                AutoSize = true,
-                ForeColor = Theme.Text,
-                BackColor = Theme.Card
-            };
-            radSortNumeric = new RadioButton
-            {
-                Text = "数值序",
-                Location = new Point(120, 44),
-                AutoSize = true,
-                ForeColor = Theme.Text,
-                BackColor = Theme.Card
-            };
-            chkReverse = new CheckBox
-            {
-                Text = "反序",
-                Location = new Point(210, 20),
-                AutoSize = true,
-                ForeColor = Theme.Warning,
-                BackColor = Theme.Card
-            };
+            var lblSpatial = new Label { Text = "空间排序", Location = new Point(0, 0), AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F) };
+            radSortTB_LR = new RadioButton { Text = "上下 → 左右", Location = new Point(0, 18), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            radSortLR_TB = new RadioButton { Text = "左右 → 上下", Location = new Point(0, 40), AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            sortSpatial.Controls.AddRange(new Control[] { lblSpatial, radSortTB_LR, radSortLR_TB });
 
-            var lblTolerance = new Label
+            // 右子区：辅助排序
+            var sortAux = new Panel
             {
-                Text = "容差",
-                Location = new Point(210, 44),
-                AutoSize = true,
-                ForeColor = Theme.TextDim
+                Location = new Point(158, 18),
+                Size = new Size(145, 90),
+                BackColor = Theme.Card
             };
-            var numTolerance = new NumericUpDown
-            {
-                Location = new Point(245, 42),
-                Width = 55,
-                Minimum = 10,
-                Maximum = 5000,
-                Value = 500,
-                BackColor = Theme.InputBg,
-                ForeColor = Theme.Text
-            };
-            numTolerance.ValueChanged += (s, e) =>
-            {
-                _sortTolerance = (double)numTolerance.Value;
-            };
-            _sortTolerance = (double)numTolerance.Value; // 初始化为控件当前值
+            var lblAux = new Label { Text = "辅助排序", Location = new Point(0, 0), AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F) };
+            radSortSelection = new RadioButton { Text = "选择序", Location = new Point(0, 18), AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            radSortNumeric = new RadioButton { Text = "数值序", Location = new Point(0, 40), AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            chkReverse = new CheckBox { Text = "反序", Location = new Point(0, 62), AutoSize = true, ForeColor = Theme.Warning, BackColor = Theme.Card };
+            var lblTol2 = new Label { Text = "容差", Location = new Point(55, 64), AutoSize = true, ForeColor = Theme.TextDim };
+            var numTolerance = new NumericUpDown { Location = new Point(85, 62), Width = 55, Minimum = 10, Maximum = 5000, Value = 500, BackColor = Theme.InputBg, ForeColor = Theme.Text };
+            sortAux.Controls.AddRange(new Control[] { lblAux, radSortSelection, radSortNumeric, chkReverse, lblTol2, numTolerance });
 
-            // 添加所有排序控件到分组
-            grpSort.Controls.AddRange(new Control[] {
-                radSortTB_LR, radSortLR_TB,
-                radSortSelection, radSortNumeric,
-                chkReverse, lblTolerance, numTolerance
-            });
-            _canvasPanel.Controls.Add(grpSort); curY += 110;
+            numTolerance.ValueChanged += (s, e) => { _sortTolerance = (double)numTolerance.Value; };
+            _sortTolerance = (double)numTolerance.Value;
+
+            // 排序模式切换时触发重排
+            radSortTB_LR.CheckedChanged += (s, e) => { if (radSortTB_LR.Checked) ApplyCurrentSort(); };
+            radSortLR_TB.CheckedChanged += (s, e) => { if (radSortLR_TB.Checked) ApplyCurrentSort(); };
+            radSortSelection.CheckedChanged += (s, e) => { if (radSortSelection.Checked) ApplyCurrentSort(); };
+            radSortNumeric.CheckedChanged += (s, e) => { if (radSortNumeric.Checked) ApplyCurrentSort(); };
+            chkReverse.CheckedChanged += (s, e) => ApplyCurrentSort();
+
+            // 添加控件到分组
+            _grpSort.Controls.Add(sortSpatial);
+            _grpSort.Controls.Add(sortAux);
+            _canvasPanel.Controls.Add(_grpSort); curY += 125;
 
             // === Box 3: 图形缓冲区与手动调序 ===
-            var grpBuffer = new GroupBox
+            _grpBuffer = new GroupBox
             {
                 Text = "图形缓冲区与手动调序",
                 Location = new Point(leftX, curY),
@@ -426,12 +425,12 @@ namespace BlockCatalogPlugin.UI
             cmbBlockNameFilter.Items.Add("(全部)");
             cmbBlockNameFilter.SelectedIndex = 0;
             cmbBlockNameFilter.SelectedIndexChanged += (s, e) => FilterBlocksByName();
-            grpBuffer.Controls.Add(cmbBlockNameFilter);
+            _grpBuffer.Controls.Add(cmbBlockNameFilter);
 
             var btnSelect = CreateFlatButton("框选图块", 200, 18, 98, Theme.Primary);
             btnSelect.Height = 24;
             btnSelect.Click += (s, e) => ExecuteCommand("_BCSELECT");
-            grpBuffer.Controls.Add(btnSelect);
+            _grpBuffer.Controls.Add(btnSelect);
 
             dgvBlocks = new DataGridView
             {
@@ -468,31 +467,31 @@ namespace BlockCatalogPlugin.UI
             dgvBlocks.ColumnWidthChanged += DgvBlocks_ColumnWidthChanged;
             dgvBlocks.RowHeightChanged += DgvBlocks_RowHeightChanged;
 
-            grpBuffer.Controls.Add(dgvBlocks);
+            _grpBuffer.Controls.Add(dgvBlocks);
 
-            var btnRemove = CreateFlatButton("删块", 258, 50, 42, Theme.Warning);
-            btnRemove.Height = 24;
-            btnRemove.Click += (s, e) => RemoveSelectedBlock();
-            var btnMoveUp = CreateFlatButton("▲", 258, 90, 42, Theme.Primary);
-            btnMoveUp.Height = 24;
-            btnMoveUp.Click += (s, e) => MoveBlockUp();
-            var btnMoveDown = CreateFlatButton("▼", 258, 120, 42, Theme.Primary);
-            btnMoveDown.Height = 24;
-            btnMoveDown.Click += (s, e) => MoveBlockDown();
-            var btnReselect = CreateFlatButton("重选", 258, 150, 42, Theme.Accent);  // 新增重选按钮
-            btnReselect.Height = 24;
-            btnReselect.Click += (s, e) => ReselectBlocks();
-            grpBuffer.Controls.Add(btnReselect);
+            _btnRemove = CreateFlatButton("删块", 258, 50, 42, Theme.Warning);
+            _btnRemove.Height = 24;
+            _btnRemove.Click += (s, e) => RemoveSelectedBlock();
+            _btnMoveUp = CreateFlatButton("▲", 258, 90, 42, Theme.Primary);
+            _btnMoveUp.Height = 24;
+            _btnMoveUp.Click += (s, e) => MoveBlockUp();
+            _btnMoveDown = CreateFlatButton("▼", 258, 120, 42, Theme.Primary);
+            _btnMoveDown.Height = 24;
+            _btnMoveDown.Click += (s, e) => MoveBlockDown();
+            _btnReselect = CreateFlatButton("重选", 258, 150, 42, Theme.Accent);  // 新增重选按钮
+            _btnReselect.Height = 24;
+            _btnReselect.Click += (s, e) => ReselectBlocks();
+            _grpBuffer.Controls.Add(_btnReselect);
 
-            grpBuffer.Controls.Add(btnRemove);
-            grpBuffer.Controls.Add(btnMoveUp);
-            grpBuffer.Controls.Add(btnMoveDown);
+            _grpBuffer.Controls.Add(_btnRemove);
+            _grpBuffer.Controls.Add(_btnMoveUp);
+            _grpBuffer.Controls.Add(_btnMoveDown);
 
-            _canvasPanel.Controls.Add(grpBuffer);
-            curY += 270;  // 调整以匹配新的 grpBuffer 高度(260)
+            _canvasPanel.Controls.Add(_grpBuffer);
+            curY += 270;  // 调整以匹配新的 _grpBuffer 高度(260)
 
             // === Box 4: 缀参数规律重编属性 ===
-            var grpSuffix = new GroupBox
+            _grpSuffix = new GroupBox
             {
                 Text = "缀参数规律重编属性",
                 Location = new Point(leftX, curY),
@@ -508,14 +507,20 @@ namespace BlockCatalogPlugin.UI
             txtSuffixLength = new TextBox { Location = new Point(128, 19), Width = 30, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle, Text = "2" };
             chkSuffixContinuous = new CheckBox { Text = "连续连号", Location = new Point(170, 20), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
 
-            grpSuffix.Controls.AddRange(new Control[] { lblStart, txtSuffixStart, lblLen, txtSuffixLength, chkSuffixContinuous });
+            _grpSuffix.Controls.AddRange(new Control[] { lblStart, txtSuffixStart, lblLen, txtSuffixLength, chkSuffixContinuous });
 
             var lblPrefix = new Label { Text = "前缀", Location = new Point(12, 48), AutoSize = true, ForeColor = Theme.TextDim };
             txtSuffixPrefix = new TextBox { Location = new Point(45, 45), Width = 75, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle };
             var lblSuffix = new Label { Text = "后缀", Location = new Point(130, 48), AutoSize = true, ForeColor = Theme.TextDim };
             txtSuffixSuffix = new TextBox { Location = new Point(162, 45), Width = 65, BackColor = Theme.InputBg, ForeColor = Theme.Text, BorderStyle = BorderStyle.FixedSingle };
 
-            grpSuffix.Controls.AddRange(new Control[] { lblPrefix, txtSuffixPrefix, lblSuffix, txtSuffixSuffix });
+            _grpSuffix.Controls.AddRange(new Control[] { lblPrefix, txtSuffixPrefix, lblSuffix, txtSuffixSuffix });
+
+            // 缀参数变化时实时刷新预览列
+            txtSuffixStart.TextChanged += (s, e) => RefreshDataGridView();
+            txtSuffixLength.TextChanged += (s, e) => RefreshDataGridView();
+            txtSuffixPrefix.TextChanged += (s, e) => RefreshDataGridView();
+            txtSuffixSuffix.TextChanged += (s, e) => RefreshDataGridView();
 
             var btnApplySuffix = CreateFlatButton("应用缀编号", 12, 73, 90, Theme.Success);
             btnApplySuffix.Height = 22;
@@ -524,28 +529,28 @@ namespace BlockCatalogPlugin.UI
             btnPreviewSuffix.Height = 22;
             btnPreviewSuffix.Click += (s, e) => PreviewSuffixRename();
 
-            grpSuffix.Controls.AddRange(new Control[] { btnApplySuffix, btnPreviewSuffix });
+            _grpSuffix.Controls.AddRange(new Control[] { btnApplySuffix, btnPreviewSuffix });
 
-            _canvasPanel.Controls.Add(grpSuffix);
+            _canvasPanel.Controls.Add(_grpSuffix);
             curY += 115;
 
-            // === Box 5: 列宽表达式与表格参数 ===
-            var grpFormula = new GroupBox
+            // === Box 5a: 列配置 ===
+            _grpFormula = new GroupBox
             {
-                Text = "列宽表达式与表格参数",
+                Text = "列配置",
                 Location = new Point(leftX, curY),
-                Size = new Size(boxW, 230),  // 适当高度
+                Size = new Size(boxW, 200),
                 BackColor = Theme.Card,
                 ForeColor = Theme.Text,
                 FlatStyle = FlatStyle.Flat
             };
 
-            // === 第一行：列管理标签 ===
+            // 第一行：列管理标签
             int row1Y = 20;
             var lblColMgr = new Label { Text = "列管理:", Location = new Point(12, row1Y), AutoSize = true, ForeColor = Theme.TextDim, Font = new Font("Microsoft YaHei UI", 8F, FontStyle.Bold) };
-            grpFormula.Controls.Add(lblColMgr);
+            _grpFormula.Controls.Add(lblColMgr);
 
-            // === 第二行：下拉框 + 按钮 ===
+            // 第二行：下拉框 + 按钮
             int row2Y = 40;
             cmbAddColumn = new ComboBox
             {
@@ -564,7 +569,7 @@ namespace BlockCatalogPlugin.UI
             cmbAddColumn.Items.Add("JZ-建筑");
             cmbAddColumn.Items.Add("GC-工程");
             cmbAddColumn.SelectedIndex = 0;
-            grpFormula.Controls.Add(cmbAddColumn);
+            _grpFormula.Controls.Add(cmbAddColumn);
 
             int btnX = 108;
             var btnAddColumn = CreateFlatButton("增加列", btnX, row2Y - 2, 50, Theme.Success);
@@ -574,54 +579,76 @@ namespace BlockCatalogPlugin.UI
                 if (cmbAddColumn.SelectedItem != null)
                 {
                     string selected = cmbAddColumn.SelectedItem.ToString();
-                    string[] parts = selected.Split('-');
-                    string tag = parts[0];
-                    string header = parts.Length > 1 ? parts[1] : tag;
+                    string tag, header;
+                    if (selected.StartsWith("__CUSTOM__|"))
+                    {
+                        var dialog = new AddColumnDialog();
+                        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+                        tag = dialog.ColumnName.Trim();
+                        header = dialog.ColumnName.Trim();
+                        if (string.IsNullOrEmpty(tag)) return;
+                    }
+                    else
+                    {
+                        string[] parts = selected.Replace("|", "-").Split('-');
+                        tag = parts[0].Trim();
+                        header = parts.Length > 1 ? parts[1].Trim() : tag;
+                    }
                     AddColumn(tag, header);
                 }
             };
-            grpFormula.Controls.Add(btnAddColumn);
+            _grpFormula.Controls.Add(btnAddColumn);
 
             btnX += 55;
-            var btnRemoveColumn = CreateFlatButton("删除列", btnX, row2Y - 2, 50, Theme.Warning);
-            btnRemoveColumn.Height = 22;
-            btnRemoveColumn.Click += (s, e) => RemoveSelectedColumn();
-            grpFormula.Controls.Add(btnRemoveColumn);
+            _btnRemoveColumn = CreateFlatButton("删除列", btnX, row2Y - 2, 50, Theme.Warning);
+            _btnRemoveColumn.Height = 22;
+            _btnRemoveColumn.Click += (s, e) => RemoveSelectedColumn();
+            _grpFormula.Controls.Add(_btnRemoveColumn);
 
             btnX += 55;
             var btnColUp = CreateFlatButton("▲", btnX, row2Y - 2, 24, Theme.Primary);
             btnColUp.Height = 22;
             btnColUp.Click += (s, e) => MoveColumnUp();
-            grpFormula.Controls.Add(btnColUp);
+            _grpFormula.Controls.Add(btnColUp);
 
             btnX += 27;
             var btnColDown = CreateFlatButton("▼", btnX, row2Y - 2, 24, Theme.Primary);
             btnColDown.Height = 22;
             btnColDown.Click += (s, e) => MoveColumnDown();
-            grpFormula.Controls.Add(btnColDown);
+            _grpFormula.Controls.Add(btnColDown);
 
-            // === 第三行：列列表 ===
+            // 第三行：列列表（CheckedListBox）
             int row3Y = 65;
-            lstColumns = new ListBox
+            lstColumns = new CheckedListBox
             {
                 Location = new Point(12, row3Y),
-                Size = new Size(288, 50),  // 288 < 312 - 12*2 = 288, fits within groupbox
+                Size = new Size(288, 50),
                 BackColor = Theme.InputBg,
                 ForeColor = Theme.Text,
                 Font = new Font("Consolas", 8F),
-                BorderStyle = BorderStyle.FixedSingle
+                BorderStyle = BorderStyle.FixedSingle,
+                CheckOnClick = true,
+                HorizontalScrollbar = true
             };
-            grpFormula.Controls.Add(lstColumns);
+            lstColumns.ItemCheck += LstColumns_ItemCheck;
+            lstColumns.MouseDoubleClick += (s, e) =>
+            {
+                var info = lstColumns.IndexFromPoint(e.Location);
+                if (info < 0 || info >= lstColumns.Items.Count) return;
+                var col = _lstColumnMap[info];
+                var dialog = new EditColumnHeaderDialog(col.Header);
+                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                {
+                    col.Header = dialog.HeaderName;
+                    RefreshColumnsList();
+                }
+            };
+            _grpFormula.Controls.Add(lstColumns);
 
-            // === 分隔线 ===
-            int sepY = 120;
-            var sepLine = new Panel { Location = new Point(12, sepY), Size = new Size(288, 1), BackColor = Theme.Border };
-            grpFormula.Controls.Add(sepLine);
-
-            // === 第四行：列宽公式 ===
-            int row4Y = 128;
+            // 第四行：列宽公式
+            int row4Y = 120;
             var lblForm = new Label { Text = "公式:", Location = new Point(12, row4Y + 2), AutoSize = true, ForeColor = Theme.TextDim };
-            grpFormula.Controls.Add(lblForm);
+            _grpFormula.Controls.Add(lblForm);
 
             txtColumnFormula = new TextBox
             {
@@ -633,52 +660,66 @@ namespace BlockCatalogPlugin.UI
                 Font = new Font("Consolas", 8.5F),
                 Text = "20+40+60"
             };
-            grpFormula.Controls.Add(txtColumnFormula);
+            _grpFormula.Controls.Add(txtColumnFormula);
 
             int formBtnX = 170;
             var btnApplyForm = CreateFlatButton("应用", formBtnX, row4Y - 2, 38, Theme.Primary);
             btnApplyForm.Height = 20;
             btnApplyForm.Click += (s, e) => ApplyColumnFormula();
-            grpFormula.Controls.Add(btnApplyForm);
+            _grpFormula.Controls.Add(btnApplyForm);
 
             formBtnX += 43;
             var btnGetForm = CreateFlatButton("获取", formBtnX, row4Y - 2, 38, Theme.Accent);
             btnGetForm.Height = 20;
             btnGetForm.Click += (s, e) => txtColumnFormula.Text = _currentStyle.GetFormulaWidths();
-            grpFormula.Controls.Add(btnGetForm);
+            _grpFormula.Controls.Add(btnGetForm);
 
             formBtnX += 43;
             var btnPickColWidth = CreateFlatButton("拖拽列宽", formBtnX, row4Y - 2, 44, Theme.AccentLight);
             btnPickColWidth.Height = 20;
             btnPickColWidth.Click += (s, e) => StartPickColumnWidthMode();
-            grpFormula.Controls.Add(btnPickColWidth);
+            _grpFormula.Controls.Add(btnPickColWidth);
 
-            // === 第五行：字高、行高、表头 ===
-            int row5Y = 152;
-            var lblFontH = new Label { Text = "字高", Location = new Point(12, row5Y + 2), AutoSize = true, ForeColor = Theme.TextDim };
-            grpFormula.Controls.Add(lblFontH);
-            numFontHeight = new NumericUpDown { Location = new Point(45, row5Y), Width = 40, Minimum = 1, Maximum = 20, Value = 3.5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
-            grpFormula.Controls.Add(numFontHeight);
+            _canvasPanel.Controls.Add(_grpFormula);
+            curY += 205;
 
-            var lblRowH = new Label { Text = "行高", Location = new Point(95, row5Y + 2), AutoSize = true, ForeColor = Theme.TextDim };
-            grpFormula.Controls.Add(lblRowH);
-            numRowHeight = new NumericUpDown { Location = new Point(128, row5Y), Width = 40, Minimum = 1, Maximum = 50, Value = 5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
-            grpFormula.Controls.Add(numRowHeight);
+            // === Box 5b: 输出参数 ===
+            _grpOutput = new GroupBox
+            {
+                Text = "输出参数",
+                Location = new Point(leftX, curY),
+                Size = new Size(boxW, 90),
+                BackColor = Theme.Card,
+                ForeColor = Theme.Text,
+                FlatStyle = FlatStyle.Flat
+            };
 
-            chkShowHeader = new CheckBox { Text = "表头", Location = new Point(180, row5Y + 2), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
-            grpFormula.Controls.Add(chkShowHeader);
+            // 第一行：字高、行高、表头
+            int outRow1Y = 20;
+            var lblFontH = new Label { Text = "字高", Location = new Point(12, outRow1Y + 2), AutoSize = true, ForeColor = Theme.TextDim };
+            _grpOutput.Controls.Add(lblFontH);
+            numFontHeight = new NumericUpDown { Location = new Point(45, outRow1Y), Width = 40, Minimum = 1, Maximum = 20, Value = 3.5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
+            _grpOutput.Controls.Add(numFontHeight);
 
-            // === 第六行：目标空间 + 拖拽尺寸按钮 ===
-            int row6Y = 180;
-            var lblOut = new Label { Text = "目标:", Location = new Point(12, row6Y + 2), AutoSize = true, ForeColor = Theme.TextDim };
-            grpFormula.Controls.Add(lblOut);
-            radModelSpace = new RadioButton { Text = "模型", Location = new Point(48, row6Y), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
-            grpFormula.Controls.Add(radModelSpace);
-            radLayout = new RadioButton { Text = "布局", Location = new Point(90, row6Y), AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card };
-            grpFormula.Controls.Add(radLayout);
+            var lblRowH = new Label { Text = "行高", Location = new Point(95, outRow1Y + 2), AutoSize = true, ForeColor = Theme.TextDim };
+            _grpOutput.Controls.Add(lblRowH);
+            numRowHeight = new NumericUpDown { Location = new Point(128, outRow1Y), Width = 40, Minimum = 1, Maximum = 50, Value = 5m, BackColor = Theme.InputBg, ForeColor = Theme.Text };
+            _grpOutput.Controls.Add(numRowHeight);
+
+            chkShowHeader = new CheckBox { Text = "表头", Location = new Point(180, outRow1Y + 2), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            _grpOutput.Controls.Add(chkShowHeader);
+
+            // 第二行：目标空间 + 拖拽尺寸按钮
+            int outRow2Y = 48;
+            var lblOut = new Label { Text = "目标:", Location = new Point(12, outRow2Y + 2), AutoSize = true, ForeColor = Theme.TextDim };
+            _grpOutput.Controls.Add(lblOut);
+            radModelSpace = new RadioButton { Text = "模型", Location = new Point(48, outRow2Y), AutoSize = true, Checked = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            _grpOutput.Controls.Add(radModelSpace);
+            radLayout = new RadioButton { Text = "布局", Location = new Point(90, outRow2Y), AutoSize = true, ForeColor = Theme.Text, BackColor = Theme.Card };
+            _grpOutput.Controls.Add(radLayout);
             cmbLayoutName = new ComboBox
             {
-                Location = new Point(120, row6Y - 2),
+                Location = new Point(120, outRow2Y - 2),
                 Width = 65,
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 FlatStyle = FlatStyle.Flat,
@@ -688,10 +729,14 @@ namespace BlockCatalogPlugin.UI
             };
             cmbLayoutName.Items.Add("Model");
             cmbLayoutName.SelectedIndex = 0;
-            radLayout.CheckedChanged += (s, e) => { cmbLayoutName.Enabled = radLayout.Checked; };
-            grpFormula.Controls.Add(cmbLayoutName);
+            radLayout.CheckedChanged += (s, e) =>
+            {
+                cmbLayoutName.Enabled = radLayout.Checked;
+                if (radLayout.Checked) RefreshLayoutNames();
+            };
+            _grpOutput.Controls.Add(cmbLayoutName);
 
-            var btnPickDimSize = CreateFlatButton("拖拽获取尺寸", 200, row6Y - 2, 80, Theme.Primary);
+            var btnPickDimSize = CreateFlatButton("拖拽获取尺寸", 200, outRow2Y - 2, 80, Theme.Primary);
             btnPickDimSize.Height = 22;
             btnPickDimSize.Click += (s, e) =>
             {
@@ -700,13 +745,13 @@ namespace BlockCatalogPlugin.UI
                 AppendLog("请在CAD中拖拽定义表格尺寸...", Theme.Primary);
                 ExecuteCommand("_BCGENPOS");
             };
-            grpFormula.Controls.Add(btnPickDimSize);
+            _grpOutput.Controls.Add(btnPickDimSize);
 
-            _canvasPanel.Controls.Add(grpFormula);
-            curY += 240;
+            _canvasPanel.Controls.Add(_grpOutput);
+            curY += 95;
 
             // === 间距公式 ===
-            var lblSpace = new Label { Text = "间距公式:", Location = new Point(leftX + 6, curY + 4), AutoSize = true, ForeColor = Theme.TextDim };
+            _lblSpacing = new Label { Text = "间距公式:", Location = new Point(leftX + 6, curY + 4), AutoSize = true, ForeColor = Theme.TextDim };
             txtSpacingExpression = new TextBox
             {
                 Location = new Point(leftX + 70, curY + 2),
@@ -716,7 +761,7 @@ namespace BlockCatalogPlugin.UI
                 BorderStyle = BorderStyle.FixedSingle,
                 Text = "5"
             };
-            _canvasPanel.Controls.Add(lblSpace);
+            _canvasPanel.Controls.Add(_lblSpacing);
             _canvasPanel.Controls.Add(txtSpacingExpression);
             curY += 30;
 
@@ -733,26 +778,32 @@ namespace BlockCatalogPlugin.UI
             curY += 28;
 
             // === 输出按钮 ===
-            var btnPreview = CreateFlatButton("预览目录表格", boxW, Theme.Primary);
-            btnPreview.Location = new Point(leftX, curY);
-            btnPreview.Height = 30;
-            btnPreview.Click += (s, e) => ShowPreview();
-            _canvasPanel.Controls.Add(btnPreview);
+            _btnPreview = CreateFlatButton("预览目录表格", boxW, Theme.Primary);
+            _btnPreview.Location = new Point(leftX, curY);
+            _btnPreview.Height = 30;
+            _btnPreview.Click += (s, e) => ShowPreview();
+            _canvasPanel.Controls.Add(_btnPreview);
             curY += 36;
 
-            var btnGenerate = CreateFlatButton("指定点绘制目录", boxW, Theme.Success);
-            btnGenerate.Location = new Point(leftX, curY);
-            btnGenerate.Height = 36;
-            btnGenerate.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
-            btnGenerate.Click += (s, e) => GenerateToPosition();
-            _canvasPanel.Controls.Add(btnGenerate);
+            _btnGenerate = CreateFlatButton("指定点绘制目录", boxW, Theme.Success);
+            _btnGenerate.Location = new Point(leftX, curY);
+            _btnGenerate.Height = 36;
+            _btnGenerate.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            _btnGenerate.Click += (s, e) => GenerateToPosition();
+            _canvasPanel.Controls.Add(_btnGenerate);
             curY += 42;
 
-            var btnSyncAttrs = CreateFlatButton("一键反向同步至图纸块属性", boxW, Theme.AccentLight);
-            btnSyncAttrs.Location = new Point(leftX, curY);
-            btnSyncAttrs.Height = 30;
-            btnSyncAttrs.Click += (s, e) => SyncAttributesToBlocks();
-            _canvasPanel.Controls.Add(btnSyncAttrs);
+            _btnSyncAttrs = CreateFlatButton("一键反向同步至图纸块属性", boxW, Theme.AccentLight);
+            _btnSyncAttrs.Location = new Point(leftX, curY);
+            _btnSyncAttrs.Height = 30;
+            _btnSyncAttrs.Click += (s, e) => SyncAttributesToBlocks();
+            _canvasPanel.Controls.Add(_btnSyncAttrs);
+
+            // 确保面板可滚动（内容总高度约1200px）
+            _canvasPanel.AutoScrollMinSize = new Size(0, 1200);
+
+            // 记录各组原始 Y（用于编辑模式压缩布局）
+            if (_grpSuffix != null) _grpSuffix_baseY = _grpSuffix.Location.Y;
         }
 
         private Button CreateFlatButton(string text, int x, int y, int width, Color? bgColor = null)
@@ -794,6 +845,7 @@ namespace BlockCatalogPlugin.UI
             _selectedBlockNames.Clear();
             _selectedTags.Clear();
             if (dgvBlocks != null) dgvBlocks.DataSource = null;
+            UpdateButtonStates();
             AppendLog("已清除数据", Theme.TextDim);
         }
 
@@ -823,6 +875,7 @@ namespace BlockCatalogPlugin.UI
             }
 
             ClearData();
+            UpdateButtonStates();
             AppendLog("面板已重置", Theme.Success);
         }
 
@@ -1019,6 +1072,7 @@ namespace BlockCatalogPlugin.UI
 
         private void RemoveSelectedBlock()
         {
+            if (IsFilterActive()) { AppendLog("过滤模式下不支持删除，请切换到\"(全部)\"后操作", Theme.Warning); return; }
             if (dgvBlocks.SelectedRows.Count > 0 && _currentResult != null && _currentBlockRows.Count > 0)
             {
                 int rowIdx = dgvBlocks.SelectedRows[0].Index;
@@ -1038,6 +1092,7 @@ namespace BlockCatalogPlugin.UI
 
         private void MoveBlockUp()
         {
+            if (IsFilterActive()) { AppendLog("过滤模式下不支持移动，请切换到\"(全部)\"后操作", Theme.Warning); return; }
             if (dgvBlocks.SelectedRows.Count > 0 && _currentResult != null && _currentBlockRows.Count > 0)
             {
                 int rowIdx = dgvBlocks.SelectedRows[0].Index;
@@ -1063,6 +1118,7 @@ namespace BlockCatalogPlugin.UI
 
         private void MoveBlockDown()
         {
+            if (IsFilterActive()) { AppendLog("过滤模式下不支持移动，请切换到\"(全部)\"后操作", Theme.Warning); return; }
             if (dgvBlocks.SelectedRows.Count > 0 && _currentResult != null && _currentBlockRows.Count > 0)
             {
                 int rowIdx = dgvBlocks.SelectedRows[0].Index;
@@ -1088,6 +1144,7 @@ namespace BlockCatalogPlugin.UI
 
         private void RefreshDataGridView()
         {
+            if (_isUpdatingFilter) return;
             if (dgvBlocks == null || _currentResult == null) return;
 
             dgvBlocks.DataSource = null;
@@ -1120,6 +1177,161 @@ namespace BlockCatalogPlugin.UI
             RefreshBlockNameFilter();
         }
 
+        private bool IsFilterActive()
+        {
+            string selected = cmbBlockNameFilter?.SelectedItem?.ToString() ?? "";
+            return !string.IsNullOrEmpty(selected) && selected != "(全部)";
+        }
+
+        /// <summary>
+        /// 根据当前排序模式重新排序并刷新视图
+        /// </summary>
+        private void ApplyCurrentSort()
+        {
+            if (_currentResult == null || _currentResult.Blocks.Count == 0) return;
+            var sortType = GetSelectedSortType();
+            var sorted = _sortEngine.Sort(_currentResult.Blocks, sortType, _sortTolerance, chkReverse.Checked);
+            _currentResult.Blocks.Clear();
+            _currentResult.Blocks.AddRange(sorted);
+            RefreshDataGridView();
+        }
+
+        /// <summary>
+        /// 设置工作模式界面联动
+        /// </summary>
+        /// <param name="isEditMode">true=更改图号模式，false=生成目录模式</param>
+        private void SetUIMode(bool isEditMode)
+        {
+            _isEditMode = isEditMode;
+            // 生成目录模式：显示所有目录生成相关控件
+            // 更改图号模式：隐藏列配置、公式、输出按钮等，压缩布局填补空白
+
+            // 切换可见性
+            if (_grpSort != null) _grpSort.Visible = !isEditMode;
+            if (_grpFormula != null) _grpFormula.Visible = !isEditMode;
+            if (_grpOutput != null) _grpOutput.Visible = !isEditMode;
+            if (_lblSpacing != null) _lblSpacing.Visible = !isEditMode;
+            if (txtSpacingExpression != null) txtSpacingExpression.Visible = !isEditMode;
+            if (_btnPreview != null) _btnPreview.Visible = !isEditMode;
+            if (_btnGenerate != null) _btnGenerate.Visible = !isEditMode;
+            if (_grpBuffer != null) _grpBuffer.Visible = true;
+            if (_grpSuffix != null) _grpSuffix.Visible = true;
+            if (_btnSyncAttrs != null)
+            {
+                _btnSyncAttrs.Visible = isEditMode; // 一键反向同步仅在更改图号模式显示
+            }
+
+            // 编辑模式：将 _grpSuffix 上移填补 grpSort 隐藏后的空白
+            // shift = grpSort 高度 + grpSort 与 grpBuffer 之间的间距(5px)
+            int sortHeight = (_grpSort != null) ? _grpSort.Height : 0;
+            int sortToBufferGap = 5;
+            int suffixShift = isEditMode ? sortHeight + sortToBufferGap : 0;
+            if (_grpSuffix != null)
+            {
+                _grpSuffix.Location = new Point(_grpSuffix.Location.X, _grpSuffix_baseY - suffixShift);
+            }
+
+            // 更新底栏和日志面板位置（编辑模式也上移同距离）
+            foreach (Control c in this.Controls)
+            {
+                if (c is Panel && c.Location.Y == 640) // 底栏
+                    c.Location = new Point(c.Location.X, 640 - suffixShift);
+                if (c is Panel && c.Location.Y == 680) // 日志面板
+                    c.Location = new Point(c.Location.X, 680 - suffixShift);
+            }
+
+            AppendLog(isEditMode ? "已切换到：更改图号模式" : "已切换到：生成目录模式", Theme.TextDim);
+            UpdateButtonStates();
+        }
+
+        /// <summary>
+        /// 根据当前数据状态更新按钮启用/禁用状态
+        /// </summary>
+        private void UpdateButtonStates()
+        {
+            bool hasData = _currentResult != null && _currentResult.Blocks.Count > 0;
+            bool isEditMode = radEditMode?.Checked == true;
+
+            // 数据相关按钮
+            if (_btnPreview != null) _btnPreview.Enabled = hasData && !isEditMode;
+            if (_btnGenerate != null) _btnGenerate.Enabled = hasData && !isEditMode;
+            if (_btnSyncAttrs != null) _btnSyncAttrs.Enabled = hasData && isEditMode;
+            // 缓冲区操作按钮
+            SetControlEnabled(_btnRemove, hasData);
+            SetControlEnabled(_btnMoveUp, hasData);
+            SetControlEnabled(_btnMoveDown, hasData);
+            SetControlEnabled(_btnReselect, hasData);
+        }
+
+        private void SetControlEnabled(Control c, bool enabled)
+        {
+            if (c != null) c.Enabled = enabled;
+        }
+
+        /// <summary>
+        /// 动态刷新布局名下拉框：从当前文档获取所有布局
+        /// </summary>
+        private void RefreshLayoutNames()
+        {
+            if (cmbLayoutName == null) return;
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null) return;
+
+            cmbLayoutName.Items.Clear();
+            cmbLayoutName.Items.Add("Model");
+
+            try
+            {
+                using (var tr = doc.Database.TransactionManager.StartTransaction())
+                {
+                    var layoutDict = doc.Database.LayoutDictionaryId;
+                    var dict = tr.GetObject(layoutDict, OpenMode.ForRead) as DBDictionary;
+                    if (dict != null)
+                    {
+                        foreach (var entry in dict)
+                        {
+                            if (entry.Key != "Model")
+                                cmbLayoutName.Items.Add(entry.Key);
+                        }
+                    }
+                    tr.Commit();
+                }
+            }
+            catch { }
+
+            if (cmbLayoutName.Items.Count > 0)
+                cmbLayoutName.SelectedIndex = 0;
+        }
+
+        /// <summary>
+        /// 动态刷新添加列下拉框：从当前提取结果的 AllTags 生成
+        /// </summary>
+        private void RefreshAddColumnCombo()
+        {
+            if (cmbAddColumn == null) return;
+            cmbAddColumn.Items.Clear();
+            // 内置常用列
+            cmbAddColumn.Items.Add("XH|序号");
+            cmbAddColumn.Items.Add("TH|图号");
+            cmbAddColumn.Items.Add("TM|图名");
+            cmbAddColumn.Items.Add("BL|比例");
+            cmbAddColumn.Items.Add("DH|图别");
+            cmbAddColumn.Items.Add("JZ|建筑");
+            cmbAddColumn.Items.Add("GC|工程");
+            // 从实际提取结果追加 Tag
+            if (_currentResult?.AllTags != null)
+            {
+                foreach (var tag in _currentResult.AllTags)
+                {
+                    if (cmbAddColumn.Items.Cast<string>().Any(i => i.StartsWith(tag + "|"))) continue;
+                    cmbAddColumn.Items.Add($"{tag}|{tag}");
+                }
+            }
+            // 添加自定义项
+            cmbAddColumn.Items.Add("__CUSTOM__|自定义...");
+            cmbAddColumn.SelectedIndex = 0;
+        }
+
         private void FilterBlocksByName()
         {
             if (_isUpdatingFilter) return;
@@ -1130,6 +1342,7 @@ namespace BlockCatalogPlugin.UI
             if (string.IsNullOrEmpty(selectedFilter) || selectedFilter == "(全部)")
             {
                 RefreshDataGridView();
+                UpdateButtonStates();
             }
             else
             {
@@ -1191,6 +1404,7 @@ namespace BlockCatalogPlugin.UI
 
             RefreshColumnsList();
             UpdateColumnFormula();
+            UpdateButtonStates();
             AppendLog($"已添加列: {header}", Theme.Success);
         }
 
@@ -1200,7 +1414,6 @@ namespace BlockCatalogPlugin.UI
         private void RemoveSelectedColumn()
         {
             if (lstColumns == null || _currentStyle == null) return;
-
             if (lstColumns.SelectedIndex < 0)
             {
                 AppendLog("请先选择要删除的列", Theme.Warning);
@@ -1208,15 +1421,13 @@ namespace BlockCatalogPlugin.UI
             }
 
             int idx = lstColumns.SelectedIndex;
-            var visibleCols = _currentStyle.Columns.Where(c => c.Visible).OrderBy(c => c.Order).ToList();
-            if (idx >= 0 && idx < visibleCols.Count)
-            {
-                var colToRemove = visibleCols[idx];
-                _currentStyle.Columns.Remove(colToRemove);
-                RefreshColumnsList();
-                UpdateColumnFormula();
-                AppendLog($"已删除列: {colToRemove.Header}", Theme.Warning);
-            }
+            if (!_lstColumnMap.ContainsKey(idx)) return;
+            var colToRemove = _lstColumnMap[idx];
+            _currentStyle.Columns.Remove(colToRemove);
+            RefreshColumnsList();
+            UpdateColumnFormula();
+            UpdateButtonStates();
+            AppendLog($"已删除列: {colToRemove.Header}", Theme.Warning);
         }
 
         /// <summary>
@@ -1228,19 +1439,19 @@ namespace BlockCatalogPlugin.UI
             if (lstColumns.SelectedIndex <= 0) return;
 
             int idx = lstColumns.SelectedIndex;
-            var visibleCols = _currentStyle.Columns.Where(c => c.Visible).OrderBy(c => c.Order).ToList();
-            if (idx > 0 && idx < visibleCols.Count)
-            {
-                // 交换顺序
-                int orderIdx1 = visibleCols[idx].Order;
-                int orderIdx2 = visibleCols[idx - 1].Order;
-                visibleCols[idx].Order = orderIdx2;
-                visibleCols[idx - 1].Order = orderIdx1;
+            if (!_lstColumnMap.ContainsKey(idx) || !_lstColumnMap.ContainsKey(idx - 1)) return;
 
-                RefreshColumnsList();
-                UpdateColumnFormula();
-                lstColumns.SelectedIndex = idx - 1;
-            }
+            // 通过 _lstColumnMap 取列，保证与列表索引一致
+            var colCurr = _lstColumnMap[idx];
+            var colPrev = _lstColumnMap[idx - 1];
+            int tmpOrder = colCurr.Order;
+            colCurr.Order = colPrev.Order;
+            colPrev.Order = tmpOrder;
+
+            RefreshColumnsList();
+            UpdateColumnFormula();
+            UpdateButtonStates();
+            lstColumns.SelectedIndex = idx - 1;
         }
 
         /// <summary>
@@ -1250,17 +1461,18 @@ namespace BlockCatalogPlugin.UI
         {
             if (lstColumns == null || _currentStyle == null) return;
             int idx = lstColumns.SelectedIndex;
-            var visibleCols = _currentStyle.Columns.Where(c => c.Visible).OrderBy(c => c.Order).ToList();
-            if (idx < 0 || idx >= visibleCols.Count - 1) return;
+            if (idx < 0 || !_lstColumnMap.ContainsKey(idx) || !_lstColumnMap.ContainsKey(idx + 1)) return;
 
-            // 交换顺序
-            int orderIdx1 = visibleCols[idx].Order;
-            int orderIdx2 = visibleCols[idx + 1].Order;
-            visibleCols[idx].Order = orderIdx2;
-            visibleCols[idx + 1].Order = orderIdx1;
+            // 通过 _lstColumnMap 取列，保证与列表索引一致
+            var colCurr = _lstColumnMap[idx];
+            var colNext = _lstColumnMap[idx + 1];
+            int tmpOrder = colCurr.Order;
+            colCurr.Order = colNext.Order;
+            colNext.Order = tmpOrder;
 
             RefreshColumnsList();
             UpdateColumnFormula();
+            UpdateButtonStates();
             lstColumns.SelectedIndex = idx + 1;
         }
 
@@ -1271,12 +1483,40 @@ namespace BlockCatalogPlugin.UI
         {
             if (lstColumns == null || _currentStyle == null) return;
 
+            int selIdx = lstColumns.SelectedIndex;
+            // 临时禁用 ItemCheck 事件，避免刷新时触发 Visible 同步
+            lstColumns.ItemCheck -= LstColumns_ItemCheck;
             lstColumns.Items.Clear();
-            var visibleCols = _currentStyle.Columns.Where(c => c.Visible).OrderBy(c => c.Order).ToList();
-            foreach (var col in visibleCols)
+            _lstColumnMap.Clear();
+
+            var ordered = _currentStyle.Columns.OrderBy(c => c.Order).ToList();
+            for (int i = 0; i < ordered.Count; i++)
             {
+                var col = ordered[i];
                 lstColumns.Items.Add($"[{col.Width:F0}]{col.Header}({col.Tag})");
+                lstColumns.SetItemChecked(i, col.Visible);
+                _lstColumnMap[i] = col;
             }
+
+            lstColumns.ItemCheck += LstColumns_ItemCheck;
+
+            if (selIdx >= 0 && selIdx < lstColumns.Items.Count)
+                lstColumns.SelectedIndex = selIdx;
+            else if (lstColumns.Items.Count > 0)
+                lstColumns.SelectedIndex = 0;
+        }
+
+        private void LstColumns_ItemCheck(object sender, ItemCheckEventArgs e)
+        {
+            if (e.Index < 0 || e.Index >= lstColumns.Items.Count || !_lstColumnMap.ContainsKey(e.Index)) return;
+            // 捕获 ColumnDef 引用而非索引，避免 BeginInvoke 回调时 _lstColumnMap 已被刷新
+            var col = _lstColumnMap[e.Index];
+            bool wasChecked = lstColumns.GetItemChecked(e.Index);
+            this.BeginInvoke(new Action(() =>
+            {
+                col.Visible = wasChecked;
+                UpdateColumnFormula();
+            }));
         }
 
         /// <summary>
@@ -1298,6 +1538,12 @@ namespace BlockCatalogPlugin.UI
                 AppendLog("请先在列表中选择要设置宽度的列", Theme.Warning);
                 return;
             }
+            if (!_lstColumnMap.ContainsKey(lstColumns.SelectedIndex))
+            {
+                AppendLog("列索引无效", Theme.Warning);
+                return;
+            }
+            // 记录目标列在有序列表中的位置
             _selectedColumnIndexForPick = lstColumns.SelectedIndex;
             AppendLog("请在CAD中框选两个点来获取列宽...", Theme.Primary);
             ExecuteCommand("_BCPICKCOLWIDTH");
@@ -1314,16 +1560,32 @@ namespace BlockCatalogPlugin.UI
                 return;
             }
 
-            var visibleCols = _currentStyle.Columns.Where(c => c.Visible).OrderBy(c => c.Order).ToList();
             int targetIdx = _selectedColumnIndexForPick >= 0 ? _selectedColumnIndexForPick : 0;
-            if (targetIdx < visibleCols.Count)
+            if (_lstColumnMap.ContainsKey(targetIdx))
             {
-                visibleCols[targetIdx].Width = width;
+                _lstColumnMap[targetIdx].Width = width;
                 RefreshColumnsList();
                 UpdateColumnFormula();
                 AppendLog($"已设置列宽: {width:F1}", Theme.Success);
             }
+            else
+            {
+                AppendLog("未找到对应列", Theme.Warning);
+            }
             _selectedColumnIndexForPick = -1;
+        }
+
+        internal void ApplyPickedRowHeight(double height)
+        {
+            if (height <= 0)
+            {
+                AppendLog("行高无效", Theme.Warning);
+                return;
+            }
+
+            _currentStyle.RowHeight = height;
+            if (numRowHeight != null) numRowHeight.Value = (decimal)Math.Min(height, 50);
+            AppendLog($"已设置行高: {height:F1}", Theme.Success);
         }
 
         #endregion
@@ -1395,6 +1657,7 @@ namespace BlockCatalogPlugin.UI
         private void DgvBlocks_DragDrop(object sender, DragEventArgs e)
         {
             if (_currentResult == null || _currentResult.Blocks.Count == 0) return;
+            if (IsFilterActive()) { AppendLog("过滤模式下不支持拖拽排序，请切换到\"(全部)\"后操作", Theme.Warning); return; }
 
             var hit = dgvBlocks.HitTest(
                 dgvBlocks.PointToClient(new Point(e.X, e.Y)).X,
@@ -1631,19 +1894,18 @@ namespace BlockCatalogPlugin.UI
         {
             try
             {
-                // 应用当前排序模式，让缓冲区和输出保持一致
-                var sortType = GetSelectedSortType();
-                var sortedBlocks = _sortEngine.Sort(result.Blocks, sortType, _sortTolerance, chkReverse.Checked);
-
-                // 用排序后的块替换原始数据
-                result.Blocks.Clear();
-                result.Blocks.AddRange(sortedBlocks);
-
+                // 保存原始选择顺序，不在这里排序
                 _currentResult = result;
                 _selectedBlockNames = result.Blocks.Select(b => b.BlockName).Distinct().ToList();
                 _selectedTags = result.AllTags.ToList();
+
+                // 动态更新列下拉框（从实际提取的 Tag 生成）
+                RefreshAddColumnCombo();
+
+                // 刷新缓冲区显示
                 RefreshDataGridView();
-                AppendLog($"已提取 {result.Blocks.Count} 个块（{GetSortTypeName(sortType)}）", Theme.Success);
+                UpdateButtonStates();
+                AppendLog($"已提取 {result.Blocks.Count} 个块（原始选择顺序）", Theme.Success);
             }
             catch (Exception ex)
             {
@@ -1843,14 +2105,12 @@ namespace BlockCatalogPlugin.UI
                     return;
                 }
 
-                var sortType = GetSelectedSortType();
-                var sortedBlocks = _sortEngine.Sort(targetBlocks, sortType, _sortTolerance, chkReverse.Checked);
-
+                // 直接使用当前已排序的 _currentResult.Blocks（单次排序在 OnBlocksSelected 或排序按钮变化时完成）
                 // 如果勾选了合并选项，则合并相同前缀的条目
                 if (chkMergeSameName?.Checked == true)
                 {
-                    sortedBlocks = MergeSamePrefixBlocks(sortedBlocks);
-                    AppendLog($"已合并相同前缀的条目，剩余 {sortedBlocks.Count} 项", Theme.TextDim);
+                    targetBlocks = MergeSamePrefixBlocks(targetBlocks);
+                    AppendLog($"已合并相同前缀的条目，剩余 {targetBlocks.Count} 项", Theme.TextDim);
                 }
 
                 string targetLayout = null;
@@ -1858,7 +2118,7 @@ namespace BlockCatalogPlugin.UI
                     targetLayout = cmbLayoutName.SelectedItem.ToString();
 
                 var blockDataResult = new BlockDataResult();
-                foreach (var attrBlock in sortedBlocks)
+                foreach (var attrBlock in targetBlocks)
                 {
                     blockDataResult.Blocks.Add(new BlockData
                     {
@@ -2006,14 +2266,11 @@ namespace BlockCatalogPlugin.UI
                     return;
                 }
 
-                var sortType = GetSelectedSortType();
-                var sortedBlocks = _sortEngine.Sort(targetBlocks, sortType, _sortTolerance, chkReverse.Checked);
-
-                // 如果勾选了合并选项，则合并相同前缀的条目
+                // 直接使用当前已排序的数据（单次排序在排序按钮变化时完成）
                 if (chkMergeSameName?.Checked == true)
                 {
-                    sortedBlocks = MergeSamePrefixBlocks(sortedBlocks);
-                    AppendLog($"已合并相同前缀的条目，剩余 {sortedBlocks.Count} 项", Theme.TextDim);
+                    targetBlocks = MergeSamePrefixBlocks(targetBlocks);
+                    AppendLog($"已合并相同前缀的条目，剩余 {targetBlocks.Count} 项", Theme.TextDim);
                 }
 
                 string targetLayout = null;
@@ -2021,7 +2278,7 @@ namespace BlockCatalogPlugin.UI
                     targetLayout = cmbLayoutName.SelectedItem.ToString();
 
                 var blockDataResult = new BlockDataResult();
-                foreach (var attrBlock in sortedBlocks)
+                foreach (var attrBlock in targetBlocks)
                 {
                     blockDataResult.Blocks.Add(new BlockData
                     {

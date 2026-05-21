@@ -40,6 +40,7 @@
     <Compile Include="BlockCatalogPlugin.cs" />
     <Compile Include="UI\BlockCatalogPanel.cs" />
     <Compile Include="UI\AddColumnDialog.cs" />
+    <Compile Include="UI\EditColumnHeaderDialog.cs" />
     <Compile Include="UI\SequenceConfigDialog.cs" />
     <Compile Include="UI\BatchModifyDialog.cs" />
     <Compile Include="UI\CatalogPreviewDialog.cs" />

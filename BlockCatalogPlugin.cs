@@ -459,7 +459,7 @@ namespace BlockCatalogPlugin
         }
 
         /// <summary>
-        /// 拖拽获取列宽命令
+        /// 拖拽获取列宽命令（两点自由拾取）
         /// </summary>
         [CommandMethod("_BCPICKCOLWIDTH", CommandFlags.Modal)]
         public void BcPickColWidth()
@@ -468,22 +468,62 @@ namespace BlockCatalogPlugin
             if (doc == null || Plugin._panel == null) return;
 
             var ed = doc.Editor;
-            var opt = new PromptCornerOptions("\n拖拽到右下角定义列宽：", Plugin._pendingInsertPoint ?? new Point3d(0, 0, 0));
-            opt.AllowNone = true;
-
-            var result = ed.GetCorner(opt);
-            if (result.Status == PromptStatus.OK)
-            {
-                var startPoint = Plugin._pendingInsertPoint ?? new Point3d(0, 0, 0);
-                double width = Math.Abs(result.Value.X - startPoint.X);
-
-                // 将宽度应用到当前选中的列
-                Plugin._panel.SafeInvoke(() => Plugin._panel.ApplyPickedColumnWidth(width));
-            }
-            else
+            // 第一点：用户自由指定列左边界
+            var p1Opt = new PromptPointOptions("\n点击列左边界：");
+            p1Opt.AllowNone = true;
+            var p1Res = ed.GetPoint(p1Opt);
+            if (p1Res.Status != PromptStatus.OK)
             {
                 Plugin._panel.SafeInvoke(() => Plugin._panel.AppendLog("取消获取列宽", BlockCatalogPlugin.UI.Theme.TextDim));
+                return;
             }
+
+            // 第二点：用户自由指定列右边界
+            var p2Opt = new PromptCornerOptions("\n点击列右边界：", p1Res.Value);
+            p2Opt.AllowNone = true;
+            var p2Res = ed.GetCorner(p2Opt);
+            if (p2Res.Status != PromptStatus.OK)
+            {
+                Plugin._panel.SafeInvoke(() => Plugin._panel.AppendLog("取消获取列宽", BlockCatalogPlugin.UI.Theme.TextDim));
+                return;
+            }
+
+            double width = Math.Abs(p2Res.Value.X - p1Res.Value.X);
+            Plugin._panel.SafeInvoke(() => Plugin._panel.ApplyPickedColumnWidth(width));
+        }
+
+        /// <summary>
+        /// 拖拽获取行高命令（两点自由拾取）
+        /// </summary>
+        [CommandMethod("_BCPICKROWHEIGHT", CommandFlags.Modal)]
+        public void BcPickRowHeight()
+        {
+            var doc = Application.DocumentManager.MdiActiveDocument;
+            if (doc == null || Plugin._panel == null) return;
+
+            var ed = doc.Editor;
+            // 第一点：用户自由指定行上边界
+            var p1Opt = new PromptPointOptions("\n点击行上边界：");
+            p1Opt.AllowNone = true;
+            var p1Res = ed.GetPoint(p1Opt);
+            if (p1Res.Status != PromptStatus.OK)
+            {
+                Plugin._panel.SafeInvoke(() => Plugin._panel.AppendLog("取消获取行高", BlockCatalogPlugin.UI.Theme.TextDim));
+                return;
+            }
+
+            // 第二点：用户自由指定行下边界
+            var p2Opt = new PromptCornerOptions("\n点击行下边界：", p1Res.Value);
+            p2Opt.AllowNone = true;
+            var p2Res = ed.GetCorner(p2Opt);
+            if (p2Res.Status != PromptStatus.OK)
+            {
+                Plugin._panel.SafeInvoke(() => Plugin._panel.AppendLog("取消获取行高", BlockCatalogPlugin.UI.Theme.TextDim));
+                return;
+            }
+
+            double height = Math.Abs(p2Res.Value.Y - p1Res.Value.Y);
+            Plugin._panel.SafeInvoke(() => Plugin._panel.ApplyPickedRowHeight(height));
         }
     }
 }
