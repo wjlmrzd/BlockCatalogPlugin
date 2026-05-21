@@ -201,24 +201,19 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\y\\.nuget\\packages\\": {},
-    "E:\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
+    "C:\\Users\\Administrator\\.nuget\\packages\\": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "I:\\BaiduSyncdisk\\编译文件同步\\BlockCatalogPlugin\\BlockCatalogPlugin.csproj",
+      "projectUniqueName": "d:\\BaiduSyncdisk\\编译文件同步\\BlockCatalogPlugin\\BlockCatalogPlugin.csproj",
       "projectName": "BlockCatalogPlugin",
-      "projectPath": "I:\\BaiduSyncdisk\\编译文件同步\\BlockCatalogPlugin\\BlockCatalogPlugin.csproj",
-      "packagesPath": "C:\\Users\\y\\.nuget\\packages\\",
-      "outputPath": "I:\\BaiduSyncdisk\\编译文件同步\\BlockCatalogPlugin\\obj\\",
+      "projectPath": "d:\\BaiduSyncdisk\\编译文件同步\\BlockCatalogPlugin\\BlockCatalogPlugin.csproj",
+      "packagesPath": "C:\\Users\\Administrator\\.nuget\\packages\\",
+      "outputPath": "d:\\BaiduSyncdisk\\编译文件同步\\BlockCatalogPlugin\\obj\\",
       "projectStyle": "PackageReference",
-      "fallbackFolders": [
-        "E:\\Microsoft Visual Studio\\Shared\\NuGetPackages"
-      ],
       "configFilePaths": [
-        "C:\\Users\\y\\AppData\\Roaming\\NuGet\\NuGet.Config",
-        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Users\\Administrator\\AppData\\Roaming\\NuGet\\NuGet.Config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
       "originalTargetFrameworks": [
@@ -274,7 +269,7 @@
             "privateAssets": "none"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.201/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.202/PortableRuntimeIdentifierGraph.json"
       }
     }
   }
