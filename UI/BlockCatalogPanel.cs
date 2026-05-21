@@ -60,6 +60,7 @@ namespace BlockCatalogPlugin.UI
         private Button _btnGenerate;     // 指定点绘制目录
         private Button _btnSyncAttrs;   // 一键反向同步
         private bool _isEditMode = false;
+        private int _grpBuffer_baseY;  // 记录 _grpBuffer 原始 Y（用于编辑模式压缩布局）
         private int _grpSuffix_baseY;  // 记录 _grpSuffix 原始 Y（用于编辑模式压缩布局）
 
         private DataGridView dgvBlocks;
@@ -803,6 +804,7 @@ namespace BlockCatalogPlugin.UI
             _canvasPanel.AutoScrollMinSize = new Size(0, 1200);
 
             // 记录各组原始 Y（用于编辑模式压缩布局）
+            if (_grpBuffer != null) _grpBuffer_baseY = _grpBuffer.Location.Y;
             if (_grpSuffix != null) _grpSuffix_baseY = _grpSuffix.Location.Y;
         }
 
@@ -1204,7 +1206,13 @@ namespace BlockCatalogPlugin.UI
         {
             _isEditMode = isEditMode;
             // 生成目录模式：显示所有目录生成相关控件
-            // 更改图号模式：隐藏列配置、公式、输出按钮等，压缩布局填补空白
+            // 更改图号模式：隐藏列配置/公式/输出等，压缩布局填补空白
+
+            // 各隐藏区块的坐标（grpSort顶部=71，高度115，底部=186；grpBuffer顶部=196）
+            // 第一段空白：grpSort底部(186)到grpBuffer顶部(196)=10px（实际空白）
+            // 第二段空白：grpBuffer顶部(196)到grpSuffix顶部(466)=270px+grpSuffix前间距=375px
+            // 隐藏内容高度：grpSort(115) + gap1(10) + gap2(375) + grpSuffix后内容(430) = 930px
+            // 简化计算：grpSort遮挡115px，grpBuffer上移115px；grpSuffix上移grpSort+grpBuffer+gap=490px
 
             // 切换可见性
             if (_grpSort != null) _grpSort.Visible = !isEditMode;
@@ -1218,26 +1226,56 @@ namespace BlockCatalogPlugin.UI
             if (_grpSuffix != null) _grpSuffix.Visible = true;
             if (_btnSyncAttrs != null)
             {
-                _btnSyncAttrs.Visible = isEditMode; // 一键反向同步仅在更改图号模式显示
+                _btnSyncAttrs.Visible = isEditMode;
             }
 
-            // 编辑模式：将 _grpSuffix 上移填补 grpSort 隐藏后的空白
-            // shift = grpSort 高度 + grpSort 与 grpBuffer 之间的间距(5px)
-            int sortHeight = (_grpSort != null) ? _grpSort.Height : 0;
-            int sortToBufferGap = 5;
-            int suffixShift = isEditMode ? sortHeight + sortToBufferGap : 0;
+            // 恢复所有控件到原始位置（先生效，避免叠加偏移）
+            if (_grpBuffer != null)
+                _grpBuffer.Location = new Point(_grpBuffer.Location.X, _grpBuffer_baseY);
             if (_grpSuffix != null)
-            {
-                _grpSuffix.Location = new Point(_grpSuffix.Location.X, _grpSuffix_baseY - suffixShift);
-            }
+                _grpSuffix.Location = new Point(_grpSuffix.Location.X, _grpSuffix_baseY);
 
-            // 更新底栏和日志面板位置（编辑模式也上移同距离）
-            foreach (Control c in this.Controls)
+            // 编辑模式：压缩布局，填补两段空白
+            // 第一步：grpSort隐藏，grpBuffer上移填补（grpSort高度115px）
+            // 第二步：grpFormula/grpOutput/控件隐藏，grpSuffix上移填补（115+270+105+后续间距=490px）
+            int sortH = 115;
+            int bufferShift = isEditMode ? sortH : 0;  // grpBuffer上移115px，紧贴grpSort原位置
+
+            // 计算grpSuffix应上移的距离：grpSort(115) + grpBuffer高度(260) + grpBuffer与grpSuffix间距(5) + grpSuffix后隐藏内容(430) = 810px
+            // 但canvas高度590px，grpSuffix只能移到canvas顶部Y=0（可见部分0-105）
+            // 实际可用shift：grpSuffix移到canvas Y=0，bottomBar随之移到grpSuffix下方
+            int suffixShift = isEditMode ? 466 : 0;  // grpSuffix移到canvas Y=0（完全可见，底部距canvas顶105px）
+
+            if (isEditMode)
             {
-                if (c is Panel && c.Location.Y == 640) // 底栏
-                    c.Location = new Point(c.Location.X, 640 - suffixShift);
-                if (c is Panel && c.Location.Y == 680) // 日志面板
-                    c.Location = new Point(c.Location.X, 680 - suffixShift);
+                // grpBuffer上移115px到Y=81（grpSort原位置）
+                if (_grpBuffer != null)
+                    _grpBuffer.Location = new Point(_grpBuffer.Location.X, _grpBuffer_baseY - bufferShift);
+                // grpSuffix上移466px到canvas Y=0（grpSuffix可见部分：0-105）
+                if (_grpSuffix != null)
+                    _grpSuffix.Location = new Point(_grpSuffix.Location.X, 0);
+
+                // 底栏和日志面板移到grpSuffix下方（grpSuffix底部=canvas Y=105，距底栏顶部5px）
+                // grpSuffix底部在canvas Y=105 → UserControl Y=155；底栏移到canvas Y=110 → UserControl Y=160
+                // 日志面板在底栏下方5px → canvas Y=115 → UserControl Y=165
+                foreach (Control c in this.Controls)
+                {
+                    if (c is Panel && c.Location.Y == 640) // 底栏
+                        c.Location = new Point(c.Location.X, 160);
+                    if (c is Panel && c.Location.Y == 680) // 日志面板
+                        c.Location = new Point(c.Location.X, 165);
+                }
+            }
+            else
+            {
+                // 生成模式：恢复原始位置
+                foreach (Control c in this.Controls)
+                {
+                    if (c is Panel && c.Location.Y == 160) // 底栏（编辑模式位置）
+                        c.Location = new Point(c.Location.X, 640);
+                    if (c is Panel && c.Location.Y == 165) // 日志面板（编辑模式位置）
+                        c.Location = new Point(c.Location.X, 680);
+                }
             }
 
             AppendLog(isEditMode ? "已切换到：更改图号模式" : "已切换到：生成目录模式", Theme.TextDim);
